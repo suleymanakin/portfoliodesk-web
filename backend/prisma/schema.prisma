@@ -1,0 +1,115 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// User — Giriş yapan kullanıcı (admin veya yatırımcı)
+// ---------------------------------------------------------------------------
+model User {
+  id           Int       @id @default(autoincrement())
+  username     String    @unique @db.VarChar(100)
+  passwordHash String    @map("password_hash") @db.VarChar(255)
+  role         String    @db.VarChar(20)   // 'admin' | 'investor'
+  investorId   Int?      @unique @map("investor_id")  // Yatırımcı kullanıcılar için
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  investor Investor? @relation(fields: [investorId], references: [id], onDelete: Cascade)
+
+  @@map("users")
+}
+
+// ---------------------------------------------------------------------------
+// Investor — Yatırımcı profil ve güncel sermaye
+// ---------------------------------------------------------------------------
+model Investor {
+  id             Int       @id @default(autoincrement())
+  name           String    @db.VarChar(200)
+  initialCapital Decimal   @db.Decimal(20, 10)
+  currentCapital Decimal   @db.Decimal(20, 10)
+  commissionRate Decimal   @db.Decimal(10, 4)   @default(0)
+  billingDay     Int?      // 1-28, null = ay sonu
+  startDate      DateTime? @db.Date              // Yatırımcının sisteme giriş tarihi
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  user       User?
+  history     InvestorHistory[]
+  settlements MonthlySettlement[]
+
+  @@map("investors")
+}
+
+// ---------------------------------------------------------------------------
+// DailyResult — Portföy geneli günlük sonuç
+// ---------------------------------------------------------------------------
+model DailyResult {
+  id                 Int      @id @default(autoincrement())
+  date               DateTime @unique @db.Date
+  dailyPercentage    Decimal  @db.Decimal(10, 6)
+  totalPortfolioValue Decimal @db.Decimal(20, 10)
+  totalCommission    Decimal  @db.Decimal(20, 10)  @default(0)
+  createdAt          DateTime @default(now())
+
+  investorHistories InvestorHistory[]
+
+  @@map("daily_results")
+}
+
+// ---------------------------------------------------------------------------
+// InvestorHistory — Yatırımcı bazlı günlük audit trail
+// ---------------------------------------------------------------------------
+model InvestorHistory {
+  id               Int      @id @default(autoincrement())
+  investorId       Int
+  dailyResultId    Int?
+  date             DateTime @db.Date
+  capitalBefore    Decimal  @db.Decimal(20, 10)
+  capitalAfter     Decimal  @db.Decimal(20, 10)
+  dailyProfit      Decimal  @db.Decimal(20, 10)
+  commissionAmount Decimal  @db.Decimal(20, 10)  @default(0)
+
+  investor    Investor     @relation(fields: [investorId], references: [id], onDelete: Cascade)
+  dailyResult DailyResult? @relation(fields: [dailyResultId], references: [id], onDelete: Cascade)
+
+  @@unique([investorId, date])
+  @@index([investorId])
+  @@index([date])
+  @@map("investor_history")
+}
+
+// ---------------------------------------------------------------------------
+// MonthlySettlement — Aylık komisyon hesap kesimi
+// ---------------------------------------------------------------------------
+model MonthlySettlement {
+  id               Int      @id @default(autoincrement())
+  investorId       Int
+  year             Int
+  month            Int
+  periodStart      DateTime @db.Date
+  periodEnd        DateTime @db.Date
+  capitalStart     Decimal  @db.Decimal(20, 10)
+  capitalEnd       Decimal  @db.Decimal(20, 10)
+  monthlyProfit    Decimal  @db.Decimal(20, 10)
+  commissionAmount Decimal  @db.Decimal(20, 10)  @default(0)
+  isSettled        Boolean  @default(false)
+  carryForwardLoss Decimal  @db.Decimal(20, 10)  @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  investor Investor @relation(fields: [investorId], references: [id], onDelete: Cascade)
+
+  @@unique([investorId, year, month])
+  @@index([investorId])
+  @@map("monthly_settlements")
+}

@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+  <meta name="description" content="PortfolioDesk — Profesyonel Portföy Yönetim Sistemi"/>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%232f81f7'/><path fill='%23fff' d='M8 20h3v-6H8v6zm6 0h3V10h-3v10zm6 0h3v-4h-3v4z'/></svg>" type="image/svg+xml"/>
+  <title>PortfolioDesk</title>
+  <!-- Vercel / canlı: API aynı origin'de (/api) -->
+  <script>
+  (function(){
+    if (location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+      window.PD_API_URL = '/api';
+    }
+  })();
+  </script>
+  <!-- Tema: ilk paint öncesi uygula (flash önleme) -->
+  <script>
+  (function(){
+    var stored = localStorage.getItem('pd_theme');
+    var theme = (stored === 'light' || stored === 'dark') ? stored
+      : (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+    document.documentElement.setAttribute('data-theme', theme);
+  })();
+  </script>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <!-- Bootstrap Icons (proje genelinde standart ikon) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"/>
+
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js" defer></script>
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="src/css/main.css"/>
+  <link rel="stylesheet" href="src/css/components.css"/>
+  <link rel="stylesheet" href="src/css/utilities.css"/>
+  <link rel="stylesheet" href="src/css/pages/investor-dashboard.css"/>
+  <link rel="stylesheet" href="src/css/responsive.css"/>
+</head>
+<body>
+
+  <!-- ===================== SIDEBAR ===================== -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <button type="button" class="sidebar-collapse-btn sidebar-header-toggle btn-ghost" id="sidebarCollapseBtn" aria-label="Menüyü aç/kapat" title="Menüyü aç/kapat">
+        <span aria-hidden="true"></span>
+        <span aria-hidden="true"></span>
+        <span aria-hidden="true"></span>
+      </button>
+      <span class="sidebar-header-label">Menü</span>
+    </div>
+
+    <nav class="sidebar-nav" aria-label="Ana Navigasyon">
+      <a href="#/dashboard"    class="nav-item" data-page="dashboard"    id="nav-dashboard">
+        <span class="nav-icon"><i class="bi bi-house"></i></span><span class="nav-label">Dashboard</span>
+      </a>
+      <a href="#/daily-entry"  class="nav-item" data-page="daily-entry"  id="nav-daily-entry">
+        <span class="nav-icon"><i class="bi bi-calendar-day"></i></span><span class="nav-label">Günlük Giriş</span>
+      </a>
+      <a href="#/investor-dashboard" class="nav-item" data-page="investor-dashboard" id="nav-investor-dashboard">
+        <span class="nav-icon"><i class="bi bi-person"></i></span><span class="nav-label">Yatırımcı Paneli</span>
+      </a>
+      <a href="#/transactions" class="nav-item" data-page="transactions" id="nav-transactions">
+        <span class="nav-icon"><i class="bi bi-list-ul"></i></span><span class="nav-label">İşlem Geçmişi</span>
+      </a>
+      <a href="#/reports"      class="nav-item" data-page="reports"      id="nav-reports">
+        <span class="nav-icon"><i class="bi bi-bar-chart"></i></span><span class="nav-label">Raporlar</span>
+      </a>
+      <a href="#/settlements"  class="nav-item" data-page="settlements"  id="nav-settlements">
+        <span class="nav-icon"><i class="bi bi-wallet2"></i></span><span class="nav-label">Hesap Kesimi</span>
+      </a>
+      <a href="#/admin" class="nav-item" data-page="admin" id="nav-admin" style="display:none">
+        <span class="nav-icon"><i class="bi bi-gear"></i></span><span class="nav-label">Admin Panel</span>
+      </a>
+    </nav>
+  </aside>
+
+  <!-- ===================== MAIN ===================== -->
+  <div class="layout-wrapper">
+    <!-- Top Bar -->
+    <header class="topbar">
+      <button class="topbar-menu-btn" id="menuBtn" aria-label="Menüyü Aç/Kapat">
+        <span></span><span></span><span></span>
+      </button>
+      <div class="topbar-title">PortfolioDesk</div>
+      <div class="topbar-actions">
+        <div class="portfolio-badge" id="portfolioBadge">
+          <span class="badge-label">Portföy</span>
+          <span class="badge-value" id="topbarPortfolioTotal">—</span>
+        </div>
+        <button type="button" class="theme-toggle btn-ghost" id="themeToggle" aria-label="Aydınlık moda geç" title="Aydınlık moda geç">
+          <i class="bi bi-sun theme-toggle-icon" aria-hidden="true"></i>
+        </button>
+        <div class="topbar-user" id="topbarUser" style="display:none">
+          <div class="topbar-user-info">
+            <span class="topbar-user-name" id="topbarUserName"></span>
+            <span class="topbar-user-role" id="topbarUserRole"></span>
+          </div>
+          <button type="button" class="btn btn-ghost btn-sm topbar-logout-btn" id="logoutBtn" aria-label="Çıkış" title="Çıkış">
+            <svg class="logout-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Page Content — SPA router buraya render eder -->
+    <main class="main-content" id="appContent">
+      <div class="page-loading">
+        <div class="spinner"></div>
+        <p>Yükleniyor...</p>
+      </div>
+    </main>
+  </div>
+
+  <!-- ===================== TOAST Container ===================== -->
+  <div class="toast-container" id="toastContainer" aria-live="polite"></div>
+
+  <!-- ===================== MODAL Container ===================== -->
+  <div class="modal-overlay" id="modalOverlay" aria-modal="true" role="dialog"></div>
+
+  <!-- ===================== JS Modules ===================== -->
+  <script src="src/js/theme.js"></script>
+  <script type="module" src="src/js/state.js"></script>
+  <script type="module" src="src/js/utils.js"></script>
+  <script type="module" src="src/js/api.js"></script>
+  <script type="module" src="src/js/components/toast.js"></script>
+  <script type="module" src="src/js/components/modal.js"></script>
+  <script type="module" src="src/js/components/table.js"></script>
+  <script type="module" src="src/js/components/chart.js"></script>
+  <script type="module" src="src/js/pages/login.js"></script>
+  <script type="module" src="src/js/pages/admin.js"></script>
+  <script type="module" src="src/js/pages/dashboard.js"></script>
+  <script type="module" src="src/js/pages/dailyEntry.js"></script>
+  <script type="module" src="src/js/pages/investors.js"></script>
+  <script type="module" src="src/js/pages/investorDashboard.js"></script>
+  <script type="module" src="src/js/pages/transactions.js"></script>
+  <script type="module" src="src/js/pages/reports.js"></script>
+  <script type="module" src="src/js/pages/settlements.js"></script>
+  <script type="module" src="src/js/router.js"></script>
+</body>
+</html>

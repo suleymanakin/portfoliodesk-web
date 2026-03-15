@@ -1,0 +1,430 @@
+/* =========================================================
+   PortfolioDesk — Responsive (Kapsamlı)
+   Breakpoints: 768 (mobil), 900 (sidebar/drawer), 1200 (tablet/masaüstü).
+   JS tarafı: js/constants.js (DRAWER_BREAKPOINT, MOBILE_BREAKPOINT, TABLET_BREAKPOINT)
+   ile senkron tutulur.
+   ========================================================= */
+
+/* -------------------------------------------------------------------------
+   Safe area (çentikli ekranlar / notched devices)
+   ------------------------------------------------------------------------- */
+:root {
+  --safe-top: env(safe-area-inset-top, 0);
+  --safe-right: env(safe-area-inset-right, 0);
+  --safe-bottom: env(safe-area-inset-bottom, 0);
+  --safe-left: env(safe-area-inset-left, 0);
+}
+
+body {
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
+}
+
+/* =========================================================
+   MASAÜSTÜ — Tablo genişlik 100%, kolonlar sayfaya sığsın
+   ========================================================= */
+@media (min-width: 769px) {
+  .table-wrapper { overflow-x: visible; }
+  .table-inner {
+    display: block;
+    width: 100%;
+  }
+  .table {
+    width: 100%;
+    min-width: 0;
+    table-layout: fixed;
+  }
+}
+
+/* =========================================================
+   TABLET (max-width: 1200px)
+   ========================================================= */
+@media (max-width: 1200px) {
+  :root { --sidebar-width: 200px; }
+
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+
+  .main-content { padding: 1.25rem 1.5rem; }
+}
+
+/* =========================================================
+   SIDEBAR DRAWER (max-width: 900px)
+   ========================================================= */
+/* =========================================================
+   SIDEBAR DRAWER (max-width: 900px) — Masaüstünden bağımsız
+   Mobilde menü overlay (içerik sıkışmaz), her zaman ikon + metin
+   ========================================================= */
+@media (max-width: 900px) {
+  .sidebar {
+    transform: translateX(-100%);
+    width: var(--sidebar-width);
+    box-shadow: var(--shadow-lg);
+    left: var(--safe-left);
+  }
+
+  .sidebar.open { transform: translateX(0); }
+  /* Mobilde kapalıyken collapsed görünümü kullanma (sol boşluk kalmasın) */
+  .sidebar.collapsed { width: var(--sidebar-width-collapsed); }
+
+  /* İçerik hiç kaymasın; menü açıkken de overlay olarak kalsın */
+  .layout-wrapper { margin-left: 0; }
+  .sidebar.collapsed + .layout-wrapper { margin-left: 0; }
+
+  /* Mobilde menü açıkken her zaman tam menü (ikon + metin), collapsed state görünmesin */
+  .sidebar.open,
+  .sidebar.open.collapsed {
+    width: var(--sidebar-width);
+  }
+  .sidebar.open .logo-text,
+  .sidebar.open .nav-label {
+    opacity: 1;
+    visibility: visible;
+    width: auto;
+    height: auto;
+    margin: 0;
+    padding: 0;
+    position: static;
+    pointer-events: auto;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .sidebar.open .sidebar-logo { justify-content: flex-start; min-width: 0; }
+  .sidebar.open .nav-item {
+    justify-content: flex-start;
+    padding: .7rem 1.25rem;
+    margin: .15rem .75rem;
+  }
+  .sidebar.open .nav-item.active::before {
+    left: -12px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 60%;
+    border-radius: 0 5px 5px 0;
+  }
+  .sidebar.open .sidebar-collapse-btn {
+    padding: 0.5rem;
+  }
+  .sidebar.open .sidebar-collapse-btn .collapse-icon-expand { display: none; }
+  .sidebar.open .sidebar-collapse-btn .collapse-icon-collapse { display: inline; }
+
+  /* Mobilde menü açıkken "Menü" yazısı görünsün */
+  .sidebar.open .sidebar-header-label {
+    opacity: 1;
+    visibility: visible;
+    width: auto;
+    overflow: visible;
+  }
+
+  .sidebar-header { justify-content: flex-start; }
+  .topbar-menu-btn { display: flex; }
+}
+
+/* Mobil (768px): menü butonları dokunma hedefi en az 44px */
+@media (max-width: 768px) {
+  .topbar-menu-btn,
+  .sidebar-header-toggle {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 10px;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
+/* =========================================================
+   MOBILE (max-width: 768px)
+   ========================================================= */
+@media (max-width: 768px) {
+  :root {
+    --sidebar-width: min(280px, 85vw);
+    --topbar-height: 56px;
+  }
+
+  /* ----- Topbar ----- */
+  .topbar {
+    padding-left: 1rem;
+    padding-right: 1rem;
+    gap: 0.75rem;
+  }
+  .topbar-title {
+    font-size: 0.95rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+  .topbar-actions {
+    gap: 0.5rem;
+    min-width: 0;
+  }
+  .theme-toggle,
+  .topbar-logout-btn {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .portfolio-badge {
+    padding: 0.3rem 0.65rem;
+    min-width: 0;
+  }
+  .badge-value { font-size: 0.8rem; }
+  .badge-label { display: none; }
+  .topbar-user {
+    padding-left: 0.5rem;
+    gap: 0.5rem;
+  }
+  .topbar-user-name { font-size: 0.8rem; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .topbar-user-role { font-size: 0.65rem; }
+
+  /* ----- Main content ----- */
+  .main-content {
+    padding: 1rem;
+    padding-bottom: calc(1rem + var(--safe-bottom));
+  }
+
+  /* ----- Toast ----- */
+  .toast-container {
+    top: calc(var(--topbar-height) + 0.75rem);
+    right: max(0.75rem, var(--safe-right));
+    left: auto;
+    bottom: auto;
+  }
+  .toast { max-width: 100%; min-width: unset; }
+
+  /* ----- Stats ----- */
+  .stats-grid { grid-template-columns: 1fr; }
+  .stat-value { font-size: 1.3rem; }
+  .stat-card { padding: 1rem 1.25rem; }
+
+  /* ----- Cards / grids ----- */
+  .card { min-width: 0; }
+  .investors-grid { grid-template-columns: 1fr; }
+  .page-header { margin-bottom: 1.25rem; }
+  .page-title { font-size: 1.2rem; }
+  .page-subtitle { font-size: 0.8rem; }
+
+  /* ----- Forms ----- */
+  .form-row { grid-template-columns: 1fr; }
+  .form-control {
+    font-size: 16px; /* iOS zoom önleme */
+    min-height: 44px;
+  }
+  .form-group { margin-bottom: 0.85rem; }
+
+  /* ----- Toolbar ----- */
+  .toolbar {
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+  }
+  .toolbar .btn {
+    font-size: 0.8rem;
+    padding: 0.5rem 0.85rem;
+    min-height: 44px;
+  }
+  .toolbar .form-control {
+    min-width: 0;
+    flex: 1;
+    min-width: 120px;
+  }
+
+  /* ----- Table mobil: wrapper ekran genişliğinde, tablo yatay kaydırılabilir ----- */
+  /* Parent sınırlansın ki wrapper taşmasın ve scroll çalışsın */
+  :has(> .table-wrapper) {
+    min-width: 0;
+    overflow: hidden;
+  }
+  .table-wrapper {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: visible;
+    -webkit-overflow-scrolling: touch;
+    margin: 0;
+    border-radius: var(--radius-md);
+  }
+  .table-inner {
+    display: inline-block;
+    min-width: min-content;
+  }
+  .table {
+    min-width: 560px;
+    font-size: 0.8125rem;
+  }
+  .table th,
+  .table td {
+    padding: 0.5rem 0.65rem;
+    white-space: nowrap;
+  }
+  .table th { font-size: 0.75rem; }
+  .card .table-wrapper { margin-left: 0; margin-right: 0; }
+
+  /* ----- Pagination ----- */
+  .pagination {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+    padding: 0.75rem 0 0;
+  }
+  .pagination-info {
+    text-align: center;
+    font-size: 0.75rem;
+  }
+  .pagination-controls {
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+  .pagination-btn {
+    min-width: 2.25rem;
+    height: 2.25rem;
+    font-size: 0.8rem;
+  }
+  .pagination-prev,
+  .pagination-next {
+    min-width: 2.5rem;
+  }
+
+  /* ----- Modal ----- */
+  .modal-overlay {
+    align-items: flex-end;
+    padding: 0;
+    padding-bottom: var(--safe-bottom);
+  }
+  .modal {
+    max-width: 100%;
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    max-height: 85vh;
+  }
+  .modal-header,
+  .modal-body,
+  .modal-footer {
+    padding-left: max(1rem, var(--safe-left));
+    padding-right: max(1rem, var(--safe-right));
+  }
+
+  /* ----- Tab bar ----- */
+  .tab-bar { max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+  /* ----- Buttons (touch) ----- */
+  .btn {
+    min-height: 44px;
+    padding: 0.55rem 1rem;
+  }
+  .btn-sm {
+    min-height: 36px;
+    padding: 0.4rem 0.7rem;
+  }
+
+  /* ----- Investor dashboard (sayfa özel) ----- */
+  .inv-page-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+  }
+  .inv-header-left { gap: 0.75rem; }
+  .inv-header-icon { width: 44px; height: 44px; font-size: 1.5rem; }
+  .inv-selector-wrap {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .inv-selector {
+    min-width: 0 !important;
+    max-width: none !important;
+    width: 100% !important;
+  }
+  .inv-welcome-banner {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 1.25rem 1rem;
+    gap: 1rem;
+  }
+  .inv-banner-content { flex-wrap: wrap; }
+  .inv-banner-big-stat { text-align: left; }
+  .inv-banner-stat-val { font-size: 1.5rem; }
+  .inv-banner-bg-emoji { font-size: 4rem; right: 0.5rem; bottom: -1rem; }
+  .inv-stats-row { grid-template-columns: 1fr; gap: 0.75rem; }
+  .inv-main-grid { grid-template-columns: 1fr; gap: 1rem; }
+  .inv-chart-wrap { min-height: 220px !important; }
+  .inv-empty-state { padding: 2.5rem 1rem; }
+}
+
+/* =========================================================
+   KÜÇÜK MOBİL (max-width: 600px)
+   ========================================================= */
+@media (max-width: 600px) {
+  .main-content { padding: 0.75rem; }
+  .card { padding: 1rem 1.25rem; }
+  .stat-value { font-size: 1.15rem; }
+  .page-title { font-size: 1.1rem; }
+  .toolbar .btn { width: 100%; justify-content: center; }
+  .investor-card-actions {
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+  .investor-card-actions .btn-sm {
+    flex: 1;
+    min-width: 0;
+  }
+}
+
+/* =========================================================
+   ÇOK KÜÇÜK EKRAN (max-width: 380px)
+   ========================================================= */
+@media (max-width: 380px) {
+  .main-content { padding: 0.5rem; }
+  .stat-value { font-size: 1.05rem; }
+  .topbar { padding-left: 0.75rem; padding-right: 0.75rem; }
+  .pagination-btn { min-width: 2rem; height: 2rem; font-size: 0.75rem; }
+}
+
+/* =========================================================
+   GENİŞ EKRAN (min-width: 1600px)
+   ========================================================= */
+@media (min-width: 1600px) {
+  .stats-grid { grid-template-columns: repeat(4, 1fr); }
+  .investors-grid { grid-template-columns: repeat(3, 1fr); }
+  .main-content { padding: 2rem 3rem; }
+}
+
+/* =========================================================
+   TEMA GEÇİŞİ + REDUCED MOTION
+   ========================================================= */
+@media (prefers-reduced-motion: reduce) {
+  .sidebar,
+  .layout-wrapper,
+  .modal,
+  .toast,
+  .pagination-btn,
+  .btn {
+    transition-duration: 0.01ms;
+  }
+  .toast-progress-bar { animation: none; }
+}
+
+/* =========================================================
+   YAZDIRMA
+   ========================================================= */
+@media print {
+  .sidebar,
+  .topbar,
+  .bottom-nav,
+  .toast-container,
+  .modal-overlay,
+  .theme-toggle,
+  .sidebar-collapse-btn,
+  .pagination {
+    display: none !important;
+  }
+  .layout-wrapper { margin: 0 !important; }
+  .main-content { padding: 0 !important; }
+  body { background: var(--clr-print-bg) !important; color: var(--clr-print-text) !important; }
+  .table-wrapper { overflow: visible !important; }
+  .table { min-width: 0 !important; }
+}

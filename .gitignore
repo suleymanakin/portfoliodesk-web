@@ -1,0 +1,19 @@
+# Bağımlılıklar
+node_modules/
+
+# Ortam / gizli
+.env
+.env.local
+.env.*.local
+*.env
+
+# Vercel
+.vercel
+
+# Log / geçici
+*.log
+npm-debug.log*
+.DS_Store
+
+# Prisma (generate çıktısı zaten build'de üretilir)
+# backend/node_modules/ yukarıda zaten

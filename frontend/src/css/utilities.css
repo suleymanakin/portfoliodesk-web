@@ -1,0 +1,31 @@
+/* =========================================================
+   PortfolioDesk — Yardımcı sınıflar (margin, width, metin)
+   Inline stil kullanımını azaltmak için.
+   ========================================================= */
+
+/* Margin bottom */
+.mb-0 { margin-bottom: 0; }
+.mb-1 { margin-bottom: 1rem; }
+.mb-1-5 { margin-bottom: 1.5rem; }
+.mb-075 { margin-bottom: 0.75rem; }
+
+/* Max width */
+.mw-480 { max-width: 480px; }
+
+/* Form control varyantları */
+.form-control--auto { width: auto; }
+.form-control--min-180 { width: auto; min-width: 180px; }
+
+/* Metin renkleri ve boyut (token) */
+.text-warning { color: var(--clr-warning); }
+.text-danger { color: var(--clr-danger); }
+.text-muted { color: var(--clr-text-muted); }
+.text-secondary { color: var(--clr-text-secondary); }
+.text-sm { font-size: 0.85rem; }
+
+/* Flex kısayolları */
+.flex-gap { display: flex; gap: 0.5rem; }
+.flex-gap-center { display: flex; gap: 0.5rem; justify-content: center; }
+
+/* Chart / alan yüksekliği */
+.h-200 { height: 200px; }
