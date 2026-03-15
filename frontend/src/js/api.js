@@ -31,7 +31,18 @@ async function request(path, options = {}) {
 
   try {
     const res = await fetch(url, { ...options, headers });
-    const json = await res.json();
+    const contentType = res.headers.get('Content-Type') || '';
+    let json;
+    if (contentType.includes('application/json')) {
+      json = await res.json();
+    } else {
+      const text = await res.text();
+      try {
+        json = JSON.parse(text);
+      } catch {
+        throw new Error(res.ok ? 'Beklenmeyen yanıt.' : 'Sunucu hata döndü. Lütfen tekrar deneyin.');
+      }
+    }
 
     if (!res.ok) {
       const errMsg = json?.error || `HTTP ${res.status}`;

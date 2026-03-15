@@ -1,77 +1,45 @@
 # GitHub'a Push — Komutlar
 
-Terminalde **sırayla** çalıştır. Repo kökü: `Projelerim/Web` (PortfolioDesk’in bir üst klasörü).
+Bu proje **tek repo**: kök klasör `portfoliodesk-web` (içinde api, backend, frontend, vercel.json).
 
 ---
 
-## 1. Repo köküne geç
+## 1. GitHub'da yeni repo oluştur
 
-```bash
-cd /home/suleyman/Masaüstü/Projelerim/Web
-```
-
----
-
-## 2. Tüm değişiklikleri ekle (PortfolioDesk + silinen dosyalar)
-
-```bash
-git add -A
-```
+- https://github.com/new
+- **Repository name:** `portfoliodesk-web` (veya istediğin isim)
+- **Public** seç
+- README, .gitignore **ekleme** (zaten projede var)
+- **Create repository** tıkla
 
 ---
 
-## 3. Commit
+## 2. Remote ekle ve push
+
+Proje klasöründe (portfoliodesk-web):
 
 ```bash
-git commit -m "PortfolioDesk Web: Vercel kurulumu, frontend + backend"
-```
+cd /home/suleyman/Masaüstü/Projelerim/Web/PortfolioDesk/portfoliodesk-web
 
----
-
-## 4. GitHub’da repo yoksa
-
-- https://github.com/new → **Repository name** (örn. `portfoliodesk-web` veya `Web`)
-- **Create repository** (README ekleme, .gitignore ekleme)
-- Sonraki adımda GitHub’ın gösterdiği **remote** komutunu kullanacaksın.
-
-**İlk kez bağlıyorsan:**
-
-```bash
-git remote add origin https://github.com/KULLANICI_ADIN/REPO_ADI.git
-```
-
-`KULLANICI_ADIN` ve `REPO_ADI` yerine kendi GitHub kullanıcı adın ve repo adını yaz.
-
-**Zaten `origin` varsa (farklı repo için):**
-
-```bash
-git remote set-url origin https://github.com/KULLANICI_ADIN/REPO_ADI.git
-```
-
----
-
-## 5. Push
-
-```bash
-git branch -M main
+git remote add origin https://github.com/KULLANICI_ADIN/portfoliodesk-web.git
 git push -u origin main
 ```
 
-Dal adın `master` ise ve onu kullanmak istiyorsan:
+`KULLANICI_ADIN` yerine kendi GitHub kullanıcı adını yaz (örn. `suleymanakin`).
+
+---
+
+## Sonraki push'lar
 
 ```bash
-git push -u origin master
+cd /home/suleyman/Masaüstü/Projelerim/Web/PortfolioDesk/portfoliodesk-web
+git add -A
+git commit -m "Mesaj"
+git push
 ```
 
 ---
 
-## Kısa özet (repo hazırsa)
+## Vercel
 
-```bash
-cd /home/suleyman/Masaüstü/Projelerim/Web
-git add -A
-git commit -m "PortfolioDesk Web: Vercel kurulumu"
-git push -u origin main
-```
-
-Vercel’de projeyi import ederken **Root Directory** olarak `PortfolioDesk/portfoliodesk-web` seç; böylece sadece bu proje deploy edilir.
+Repo kökü artık doğrudan proje olduğu için Vercel'de **Root Directory** boş bırakılır; ekstra ayar gerekmez.

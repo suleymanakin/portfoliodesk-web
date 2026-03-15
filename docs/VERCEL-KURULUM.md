@@ -12,7 +12,9 @@ API’nin çalışması için bir PostgreSQL veritabanı gerekir. Aşağıdakile
 - **[Supabase](https://supabase.com)** (ücretsiz tier)
 - **[Vercel Postgres](https://vercel.com/storage/postgres)** (Vercel ile entegre)
 
-**Neon örneği:**
+**Adım adım kurulum:** [CLOUD-DB-KURULUM.md](CLOUD-DB-KURULUM.md)
+
+**Neon örneği (kısa):**
 
 1. https://neon.tech → Sign up / Login
 2. Yeni proje oluştur
@@ -31,15 +33,15 @@ Vercel, projeyi genelde GitHub üzerinden alır.
 ```bash
 git add .
 git commit -m "vercel: serverless api + frontend config"
-git push origin main
+git push origin master
 ```
 
 - Henüz GitHub’da repo yoksa:
   - GitHub’da yeni repo oluştur
   - `git remote add origin https://github.com/KULLANICI/REPO.git`
-  - `git push -u origin main`
+  - `git push -u origin master`
 
-(Branch adınız `master` ise `main` yerine `master` kullanın.)
+Bu proje **master** dalına push edilmiş durumda; Vercel'de bu repo'yu seçerken **master** branch'ini kullanın.
 
 ---
 
@@ -50,11 +52,13 @@ git push origin main
 3. **Import Git Repository** ile GitHub’daki bu projeyi seçin
 4. **Import**’a tıklayın
 
+**Not:** Root Directory boş bırakın; Framework Preset "Other" bırakın. Repo: **suleymanakin/portfoliodesk-web**, branch: **master**.
+
 ---
 
 ## 4. Ortam değişkenlerini (Environment Variables) gir
 
-Proje import edildikten sonra **Configure Project** ekranında **Environment Variables** bölümüne girin. Aşağıdakileri ekleyin:
+Proje import edildikten sonra **Configure Project** ekranında **Environment Variables** bölümüne girin. Test için **backend/.env** değerleri kullanılabilir; özet tablo: [VERCEL-ENV-TEST.md](VERCEL-ENV-TEST.md). Aşağıdakileri ekleyin:
 
 | Name | Value | Açıklama |
 |------|--------|----------|
