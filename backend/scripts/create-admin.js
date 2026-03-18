@@ -1,7 +1,10 @@
 /**
  * Sadece admin kullanıcıyı oluşturur (veya günceller).
  * Kullanım: node scripts/create-admin.js
- * Giriş: admin / admin123
+ * Env:
+ * - ALLOW_CREATE_ADMIN=true
+ * - ADMIN_USERNAME (optional, default: admin)
+ * - ADMIN_PASSWORD (required)
  */
 
 import 'dotenv/config';
@@ -10,8 +13,17 @@ import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
-const ADMIN_USERNAME = 'admin';
-const ADMIN_PASSWORD = 'admin123';
+if (process.env.ALLOW_CREATE_ADMIN !== 'true') {
+  console.error('create-admin engellendi. Çalıştırmak için ALLOW_CREATE_ADMIN=true ayarlayın.');
+  process.exit(1);
+}
+
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+if (!ADMIN_PASSWORD) {
+  console.error('ADMIN_PASSWORD zorunludur.');
+  process.exit(1);
+}
 
 async function main() {
   const hash = await bcrypt.hash(ADMIN_PASSWORD, 10);
@@ -28,7 +40,7 @@ async function main() {
   });
   console.log('✅ Admin kullanıcı hazır.');
   console.log('   Kullanıcı adı:', user.username);
-  console.log('   Şifre:       ', ADMIN_PASSWORD);
+  console.log('   Şifre:       ', '(env üzerinden ayarlandı)');
 }
 
 main()

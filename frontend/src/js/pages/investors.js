@@ -18,6 +18,7 @@ import {
 import { openModal, closeModal } from '../components/modal.js';
 
 let _dataInvalidatedHandler = null;
+let _summaryByInvestorId = new Map();
 
 export async function mount(container, options = {}) {
   const { embeddedInAdmin } = options;
@@ -79,6 +80,17 @@ export async function mount(container, options = {}) {
 async function loadInvestors(container) {
   const investors = await investorApi.getAll();
   AppState.set('investors', investors);
+  _summaryByInvestorId = new Map();
+  // Liste KPI’ları backend summary’den gelsin (tek tanım).
+  // Yatırımcı sayısı düşük olduğu için paralel çağrı yeterli.
+  await Promise.all((investors || []).map(async (inv) => {
+    try {
+      const s = await investorApi.summary(inv.id);
+      _summaryByInvestorId.set(inv.id, s);
+    } catch {
+      // Sessiz bırak; satırda — gösterilecek
+    }
+  }));
   renderList(investors, container);
 }
 
@@ -102,15 +114,16 @@ function renderList(investors, container) {
 
   tbody.innerHTML = filtered
     .map((inv) => {
-      const initial = parseFloat(inv.initialCapital || 0);
+      const summary = _summaryByInvestorId.get(inv.id);
       const current = parseFloat(inv.currentCapital || 0);
-      const growthPct = initial > 0 ? ((current - initial) / initial) * 100 : 0;
+      const growthPct = summary ? parseFloat(summary.performance?.growthPct || 0) : null;
+      const totalCommission = summary ? parseFloat(summary.commissions?.totalCommission || 0) : null;
       return `
       <tr class="investors-list-row ${inv.isActive ? '' : 'inactive'}" data-id="${inv.id}" tabindex="0" role="button">
         <td><strong>${escapeHtml(inv.name)}</strong></td>
         <td class="text-right">${displayMoney(current)}</td>
-        <td class="text-right ${pctClass(growthPct)} fw-600">${displayPct(growthPct, true)}</td>
-        <td class="text-right">%${parseFloat(inv.commissionRate || 0)} ${inv.billingDay ? `· ${inv.billingDay}. gün` : '· ay sonu'}</td>
+        <td class="text-right ${growthPct === null ? '' : pctClass(growthPct)} fw-600">${growthPct === null ? '—' : displayPct(growthPct, true)}</td>
+        <td class="text-right text-warning">${totalCommission === null ? '—' : displayMoney(totalCommission)}</td>
         <td class="text-center"><span class="badge ${inv.isActive ? 'badge-success' : 'badge-neutral'}">${inv.isActive ? 'Aktif' : 'Pasif'}</span></td>
       </tr>`;
     })
@@ -136,27 +149,23 @@ async function openInvestorDetailModal(investor, container) {
   });
 
   try {
-    const [monthly, series] = await Promise.all([
+    const [summary, monthly, series] = await Promise.all([
+      investorApi.summary(investor.id),
       reportApi.investorMonthly(investor.id),
       reportApi.investorSeries(investor.id),
     ]);
 
-    const initial = parseFloat(investor.initialCapital || 0);
-    const current = parseFloat(investor.currentCapital || 0);
-    const totalProfit = current - initial;
-    const growthPct = initial > 0 ? (totalProfit / initial) * 100 : 0;
-    const totalCommission = (monthly || []).reduce((sum, m) => sum + parseFloat(m.commissionAmount || 0), 0);
-    const profitableMths = (monthly || []).filter((m) => parseFloat(m.monthlyProfit || 0) > 0).length;
-    const winRate = (monthly || []).length > 0 ? (profitableMths / monthly.length) * 100 : 0;
-    let bestMonth = null;
-    let worstMonth = null;
-    if ((monthly || []).length > 0) {
-      bestMonth = monthly.reduce((a, b) => (parseFloat(a.monthlyProfit) > parseFloat(b.monthlyProfit) ? a : b));
-      worstMonth = monthly.reduce((a, b) => (parseFloat(a.monthlyProfit) < parseFloat(b.monthlyProfit) ? a : b));
-    }
-    const avgProfit = (monthly || []).length > 0
-      ? (monthly || []).reduce((s, m) => s + parseFloat(m.monthlyProfit || 0), 0) / monthly.length
-      : 0;
+    const initial = parseFloat(summary?.capital?.netInvested || summary?.capital?.initialCapital || investor.initialCapital || 0);
+    const current = parseFloat(summary?.capital?.currentCapital || investor.currentCapital || 0);
+    const totalProfit = parseFloat(summary?.performance?.totalProfit || 0);
+    const growthPct = parseFloat(summary?.performance?.growthPct || 0);
+    const totalCommission = parseFloat(summary?.commissions?.totalCommission || 0);
+    const winRate = parseFloat(summary?.monthlyKpis?.winRatePct || 0);
+    const profitableMths = Number(summary?.monthlyKpis?.positiveMonths ?? 0);
+    const monthCount = Number(summary?.monthlyKpis?.months ?? (monthly || []).length);
+    const bestMonth = summary?.monthlyKpis?.bestMonth || null;
+    const worstMonth = summary?.monthlyKpis?.worstMonth || null;
+    const avgProfit = parseFloat(summary?.monthlyKpis?.avgMonthlyProfit || 0);
 
     const sortedMonthly = [...(monthly || [])].sort((a, b) => {
       if (b.year !== a.year) return b.year - a.year;
@@ -187,7 +196,7 @@ async function openInvestorDetailModal(investor, container) {
         <h3 class="inv-detail-section-title">Genel Özet</h3>
         <div class="inv-detail-summary-grid">
           <div class="inv-detail-summary-item">
-            <span class="inv-detail-summary-label">Başlangıç Sermayesi</span>
+            <span class="inv-detail-summary-label">Ana Para</span>
             <span class="inv-detail-summary-val">${displayMoney(initial)}</span>
           </div>
           <div class="inv-detail-summary-item">
@@ -217,9 +226,9 @@ async function openInvestorDetailModal(investor, container) {
         <h3 class="inv-detail-section-title">Performans Özeti</h3>
         <div class="inv-detail-stats-grid">
           <div class="inv-detail-stat">
-            <span class="inv-detail-stat-val">%${winRate.toFixed(1)}</span>
+            <span class="inv-detail-stat-val">%${Number.isFinite(winRate) ? winRate.toFixed(1) : '0.0'}</span>
             <span class="inv-detail-stat-label">Kazanma Oranı</span>
-            <span class="inv-detail-stat-sub">${profitableMths} / ${(monthly || []).length} ay kârlı</span>
+            <span class="inv-detail-stat-sub">${profitableMths} / ${monthCount} ay kârlı</span>
           </div>
           <div class="inv-detail-stat">
             <span class="inv-detail-stat-val ${bestMonth ? 'val-positive' : ''}">${bestMonth ? displayMoney(parseFloat(bestMonth.monthlyProfit)) : '—'}</span>

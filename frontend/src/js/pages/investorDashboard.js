@@ -17,6 +17,7 @@ let _selectedInvestorId = null;
 let _dataInvalidatedHandler = null;
 /** Yatırımcı rolü giriş yaptıysa true; sadece kendi verisi gösterilir, select gizlenir */
 let _investorOnlyMode = false;
+let _selectedPeriodKey = 'general'; // 'general' | 'YYYY-MM'
 
 async function refreshInvestorData() {
   if (_investorOnlyMode && _selectedInvestorId) {
@@ -144,6 +145,17 @@ function buildShell(investorName = null) {
         </select>
       </div>`;
 
+  const periodHtml = `
+    <div class="inv-selector-wrap">
+      <label for="invPeriodSelect" class="inv-selector-label">
+        <span class="inv-selector-icon"><i class="bi bi-calendar3"></i></span> Dönem
+      </label>
+      <select id="invPeriodSelect" class="inv-selector form-control" disabled>
+        <option value="general">Genel</option>
+      </select>
+    </div>
+  `;
+
   return `
     <!-- ── PAGE HEADER ── -->
     <div class="inv-page-header">
@@ -155,6 +167,7 @@ function buildShell(investorName = null) {
         </div>
       </div>
       ${selectorHtml}
+      ${periodHtml}
     </div>
 
     <!-- ── EMPTY STATE (sadece admin görür) ── -->
@@ -313,19 +326,22 @@ async function onInvestorChange(id) {
   document.getElementById('invSettlementCount').textContent = '';
 
   // Update banner with known info immediately
-  updateBanner(investor);
+  updateBanner(investor, null);
 
   try {
-    const [series, monthly] = await Promise.all([
+    const [summary, series, monthly] = await Promise.all([
+      investorApi.summary(_selectedInvestorId),
       reportApi.investorSeries(_selectedInvestorId),
       reportApi.investorMonthly(_selectedInvestorId),
     ]);
 
-    renderStats(investor, series, monthly);
-    renderSummaryCard(investor, series, monthly);
-    renderPerfCard(investor, series, monthly);
+    setupPeriodSelect(monthly);
+    updateBanner(investor, summary);
+    renderStats(investor, series, monthly, summary);
+    renderSummaryCard(investor, series, monthly, summary);
+    renderPerfCard(investor, series, monthly, summary);
     renderChart(series);
-    renderTable(monthly);
+    renderTable(monthly, summary);
   } catch (err) {
     console.error('Yatırımcı verileri alınamadı:', err);
     document.getElementById('invStatsGrid').innerHTML =
@@ -333,28 +349,67 @@ async function onInvestorChange(id) {
   }
 }
 
+function setupPeriodSelect(monthly) {
+  const sel = document.getElementById('invPeriodSelect');
+  if (!sel) return;
+  const opts = [
+    { value: 'general', label: 'Genel' },
+    ...[...(monthly || [])]
+      .sort((a, b) => (b.year - a.year) || (b.month - a.month))
+      .map((m) => ({
+        value: `${m.year}-${String(m.month).padStart(2, '0')}`,
+        label: `${m.year} / ${String(m.month).padStart(2, '0')}`,
+      })),
+  ];
+
+  sel.disabled = false;
+  sel.innerHTML = opts.map((o) => `<option value="${o.value}">${o.label}</option>`).join('');
+
+  // Mevcut seçim listede yoksa genel'e dön
+  if (!opts.some((o) => o.value === _selectedPeriodKey)) {
+    _selectedPeriodKey = 'general';
+  }
+  sel.value = _selectedPeriodKey;
+
+  sel.onchange = () => {
+    _selectedPeriodKey = sel.value;
+    // Aynı yatırımcı için veriler zaten yüklü; re-render için investorChange'i yeniden çağır.
+    // Bu basit ve güvenli: summary/series/monthly tekrar çekilir (tutarlılık garantisi).
+    if (_selectedInvestorId) onInvestorChange(String(_selectedInvestorId));
+  };
+}
+
+function getSelectedPeriod(monthly) {
+  if (!_selectedPeriodKey || _selectedPeriodKey === 'general') return null;
+  const [y, m] = String(_selectedPeriodKey).split('-').map((x) => Number(x));
+  return (monthly || []).find((r) => r.year === y && r.month === m) || null;
+}
+
 // ---------------------------------------------------------------------------
 // Banner Update
 // ---------------------------------------------------------------------------
-function updateBanner(investor) {
-  const initial = parseFloat(investor.initialCapital || 0);
-  const current = parseFloat(investor.currentCapital || 0);
+function updateBanner(investor, summary) {
+  // UI: Deposit/withdraw anaparaya dahil gösterilir (netInvested).
+  const initial = parseFloat(summary?.capital?.netInvested ?? summary?.capital?.initialCapital ?? investor.initialCapital ?? 0);
+  const current = parseFloat(summary?.capital?.currentCapital ?? investor.currentCapital ?? 0);
+  const profit = summary?.performance?.totalProfit != null ? parseFloat(summary.performance.totalProfit) : null;
+  const pct = summary?.performance?.growthPct != null ? parseFloat(summary.performance.growthPct) : null;
 
   document.getElementById('invBannerAvatar').textContent = initials(investor.name);
   document.getElementById('invNameDisplay').textContent = investor.name;
   document.getElementById('invBannerMeta').textContent =
-    `Başlangıç: ${displayMoney(initial)} · Komisyon: %${parseFloat(investor.commissionRate || 0)}`;
+    `Ana Para: ${displayMoney(initial)} · Komisyon: %${parseFloat(investor.commissionRate || 0)}`;
 
   const bannerCapital = document.getElementById('invBannerCapital');
-  const profit = current - initial;
-  const pct = initial > 0 ? (profit / initial) * 100 : 0;
-  const isPos = profit >= 0;
+  const isPos = profit !== null ? profit >= 0 : true;
 
   bannerCapital.innerHTML = `
     <div class="inv-banner-stat-label">Güncel Sermaye</div>
     <div class="inv-banner-stat-val">${displayMoney(current)}</div>
     <div class="inv-banner-stat-delta ${isPos ? 'inv-delta-pos' : 'inv-delta-neg'}">
-      ${isPos ? '<i class="bi bi-arrow-up"></i>' : '<i class="bi bi-arrow-down"></i>'} ${displayMoney(Math.abs(profit))} (${displayPct(pct, true)})
+      ${profit === null || pct === null
+        ? '—'
+        : `${isPos ? '<i class="bi bi-arrow-up"></i>' : '<i class="bi bi-arrow-down"></i>'} ${displayMoney(Math.abs(profit))} (${displayPct(pct, true)})`}
     </div>
   `;
 
@@ -366,33 +421,54 @@ function updateBanner(investor) {
 // ---------------------------------------------------------------------------
 // Stats Row
 // ---------------------------------------------------------------------------
-function renderStats(investor, series, monthly) {
-  const initial = parseFloat(investor.initialCapital || 0);
-  const current = parseFloat(investor.currentCapital || 0);
-  const totalProfit = current - initial;
-  const growthPct = initial > 0 ? (totalProfit / initial) * 100 : 0;
+function renderStats(investor, series, monthly, summary) {
+  const period = getSelectedPeriod(monthly);
+  if (period) {
+    const cs = parseFloat(period.capitalStart ?? 0);
+    const ce = parseFloat(period.capitalEnd ?? 0);
+    const p = parseFloat(period.monthlyProfit ?? 0);
+    const c = parseFloat(period.commissionAmount ?? 0);
 
-  // Best & worst month
-  let bestMonth = null;
-  let worstMonth = null;
-  if (monthly.length > 0) {
-    bestMonth = monthly.reduce((a, b) =>
-      parseFloat(a.monthlyProfit) > parseFloat(b.monthlyProfit) ? a : b
-    );
-    worstMonth = monthly.reduce((a, b) =>
-      parseFloat(a.monthlyProfit) < parseFloat(b.monthlyProfit) ? a : b
-    );
+    const stats = [
+      { icon: '<i class="bi bi-bank"></i>', accent: 'info', theme: 'info', label: 'Dönem Başı', value: displayMoney(cs), delta: null, sub: `${formatDate(period.periodStart)} → ${formatDate(period.periodEnd)}` },
+      { icon: '<i class="bi bi-briefcase"></i>', accent: 'accent', theme: 'accent', label: 'Dönem Sonu', value: displayMoney(ce), delta: null, sub: 'Sermaye' },
+      { icon: '<i class="bi bi-graph-up"></i>', accent: p >= 0 ? 'success' : 'danger', theme: p >= 0 ? 'success' : 'danger', label: 'Dönem Kâr/Zarar', value: displayMoney(p), delta: null, sub: 'Kâr (komisyon hariç)' },
+      { icon: '<i class="bi bi-cash-stack"></i>', accent: 'warning', theme: 'warning', label: 'Komisyon', value: displayMoney(c), delta: null, sub: period.isSettled ? 'Tahsil edildi' : 'Bekliyor' },
+    ];
+
+    document.getElementById('invStatsGrid').innerHTML = stats
+      .map(
+        (s) => `
+      <div class="inv-stat-card" data-accent="${s.accent}">
+        <div class="inv-stat-header">
+          <span class="inv-stat-icon" data-theme="${s.theme}">${s.icon}</span>
+          <span class="inv-stat-label">${s.label}</span>
+        </div>
+        <div class="inv-stat-value">${s.value}</div>
+        ${s.delta ? `<div class="inv-stat-delta ${s.deltaClass || ''}">${s.delta}</div>` : ''}
+        <div class="inv-stat-sub">${s.sub}</div>
+      </div>
+    `
+      )
+      .join('');
+    return;
   }
 
-  // Monthly avg profit
-  const profitableMths = monthly.filter((m) => parseFloat(m.monthlyProfit) > 0).length;
-  const winRate = monthly.length > 0 ? (profitableMths / monthly.length) * 100 : 0;
+  const initial = parseFloat(summary?.capital?.netInvested ?? summary?.capital?.initialCapital ?? investor.initialCapital ?? 0);
+  const current = parseFloat(summary?.capital?.currentCapital ?? investor.currentCapital ?? 0);
+  const netInvested = summary?.capital?.netInvested != null ? parseFloat(summary.capital.netInvested) : null;
+  const totalProfit = summary?.performance?.totalProfit != null ? parseFloat(summary.performance.totalProfit) : null;
+  const growthPct = summary?.performance?.growthPct != null ? parseFloat(summary.performance.growthPct) : null;
+
+  const bestMonth = summary?.monthlyKpis?.bestMonth || null;
+  const profitableMths = Number(summary?.monthlyKpis?.positiveMonths ?? 0);
+  const monthCount = Number(summary?.monthlyKpis?.months ?? monthly.length);
 
   const stats = [
-    { icon: '<i class="bi bi-currency-exchange"></i>', accent: 'accent', theme: 'accent', label: 'Güncel Sermaye', value: displayMoney(current), delta: null, sub: `Başlangıç: ${displayMoney(initial)}` },
-    { icon: '<i class="bi bi-graph-up"></i>', accent: totalProfit >= 0 ? 'success' : 'danger', theme: totalProfit >= 0 ? 'success' : 'danger', label: 'Toplam Net Kâr', value: displayMoney(totalProfit), delta: displayPct(growthPct, true), deltaClass: pctClass(growthPct), sub: `${monthly.length} dönem` },
+    { icon: '<i class="bi bi-bank"></i>', accent: 'info', theme: 'info', label: 'Ana Para', value: netInvested === null ? '—' : displayMoney(netInvested), delta: null, sub: 'Giriş/çıkış dahil' },
+    { icon: '<i class="bi bi-currency-exchange"></i>', accent: 'accent', theme: 'accent', label: 'Güncel Sermaye', value: displayMoney(current), delta: null, sub: `Ana Para: ${displayMoney(initial)}` },
+    { icon: '<i class="bi bi-graph-up"></i>', accent: (totalProfit ?? 0) >= 0 ? 'success' : 'danger', theme: (totalProfit ?? 0) >= 0 ? 'success' : 'danger', label: 'Toplam Net Kâr', value: totalProfit === null ? '—' : displayMoney(totalProfit), delta: growthPct === null ? null : displayPct(growthPct, true), deltaClass: growthPct === null ? '' : pctClass(growthPct), sub: `${monthCount} dönem` },
     { icon: '<i class="bi bi-trophy"></i>', accent: 'warning', theme: 'warning', label: 'En İyi Ay', value: bestMonth ? displayMoney(parseFloat(bestMonth.monthlyProfit)) : '—', delta: bestMonth ? `${bestMonth.year}/${String(bestMonth.month).padStart(2, '0')}` : null, deltaClass: 'pct-positive', sub: bestMonth ? formatMonth(bestMonth.year, bestMonth.month) : 'Veri yok' },
-    { icon: '<i class="bi bi-bullseye"></i>', accent: 'info', theme: 'info', label: 'Kazanma Oranı', value: `%${winRate.toFixed(1)}`, delta: `${profitableMths}/${monthly.length} ay kârlı`, deltaClass: winRate >= 50 ? 'pct-positive' : 'pct-negative', sub: 'Pozitif kapanan aylar' },
   ];
 
   document.getElementById('invStatsGrid').innerHTML = stats
@@ -415,19 +491,53 @@ function renderStats(investor, series, monthly) {
 // ---------------------------------------------------------------------------
 // Summary Card
 // ---------------------------------------------------------------------------
-function renderSummaryCard(investor, series, monthly) {
-  const initial = parseFloat(investor.initialCapital || 0);
-  const current = parseFloat(investor.currentCapital || 0);
-  const profit = current - initial;
-  const totalCommission = monthly.reduce((sum, m) => sum + parseFloat(m.commissionAmount || 0), 0);
-  const lastProfit = series.length > 0 ? parseFloat(series[series.length - 1].profit || 0) : 0;
+function renderSummaryCard(investor, series, monthly, summary) {
+  const period = getSelectedPeriod(monthly);
+  if (period) {
+    const cs = parseFloat(period.capitalStart ?? 0);
+    const ce = parseFloat(period.capitalEnd ?? 0);
+    const p = parseFloat(period.monthlyProfit ?? 0);
+    const c = parseFloat(period.commissionAmount ?? 0);
+
+    const rows = [
+      { label: 'Dönem', value: `${period.year} / ${String(period.month).padStart(2, '0')}`, icon: '<i class="bi bi-calendar3"></i>' },
+      { label: 'Tarih Aralığı', value: `${formatDate(period.periodStart)} → ${formatDate(period.periodEnd)}`, icon: '<i class="bi bi-arrow-left-right"></i>' },
+      { label: 'Dönem Başı Sermaye', value: displayMoney(cs), icon: '<i class="bi bi-bank"></i>' },
+      { label: 'Dönem Sonu Sermaye', value: displayMoney(ce), icon: '<i class="bi bi-briefcase"></i>', highlight: true },
+      { label: 'Kâr/Zarar', value: displayMoney(p), icon: '<i class="bi bi-bar-chart"></i>', clsVal: pctClass(p) },
+      { label: 'Komisyon', value: displayMoney(c), icon: '<i class="bi bi-cash-stack"></i>', clsVal: 'pct-negative' },
+    ];
+
+    document.getElementById('invQuickInfo').innerHTML = `
+      <div class="inv-summary-rows">
+        ${rows
+          .map(
+            (r) => `
+          <div class="inv-summary-row${r.highlight ? ' inv-summary-highlight' : ''}">
+            <span class="inv-summary-row-icon">${r.icon}</span>
+            <span class="inv-summary-row-label">${r.label}</span>
+            <span class="inv-summary-row-val${r.clsVal ? ' ' + r.clsVal : ''}">${r.value}</span>
+          </div>
+        `
+          )
+          .join('')}
+      </div>
+    `;
+    return;
+  }
+
+  const initial = parseFloat(summary?.capital?.netInvested ?? summary?.capital?.initialCapital ?? investor.initialCapital ?? 0);
+  const current = parseFloat(summary?.capital?.currentCapital ?? investor.currentCapital ?? 0);
+  const profit = summary?.performance?.totalProfit != null ? parseFloat(summary.performance.totalProfit) : null;
+  const totalCommission = summary?.commissions?.totalCommission != null ? parseFloat(summary.commissions.totalCommission) : null;
+  const lastProfit = summary?.performance?.lastDailyProfit != null ? parseFloat(summary.performance.lastDailyProfit) : null;
 
   const rows = [
-    { label: 'Başlangıç Sermayesi', value: displayMoney(initial), icon: '<i class="bi bi-bank"></i>' },
+    { label: 'Ana Para', value: displayMoney(initial), icon: '<i class="bi bi-bank"></i>' },
     { label: 'Güncel Sermaye', value: displayMoney(current), icon: '<i class="bi bi-briefcase"></i>', highlight: true },
-    { label: 'Toplam Kâr/Zarar', value: displayMoney(profit), icon: '<i class="bi bi-bar-chart"></i>', clsVal: pctClass(profit) },
-    { label: 'Son Giriş (Kâr/Zar.)', value: displayMoney(lastProfit), icon: '<i class="bi bi-calendar-day"></i>', clsVal: pctClass(lastProfit) },
-    { label: 'Toplam Komisyon', value: displayMoney(totalCommission), icon: '<i class="bi bi-cash-stack"></i>', clsVal: 'pct-negative' },
+    { label: 'Toplam Kâr/Zarar', value: profit === null ? '—' : displayMoney(profit), icon: '<i class="bi bi-bar-chart"></i>', clsVal: profit === null ? '' : pctClass(profit) },
+    { label: 'Son Giriş (Kâr/Zar.)', value: lastProfit === null ? '—' : displayMoney(lastProfit), icon: '<i class="bi bi-calendar-day"></i>', clsVal: lastProfit === null ? '' : pctClass(lastProfit) },
+    { label: 'Toplam Komisyon', value: totalCommission === null ? '—' : displayMoney(totalCommission), icon: '<i class="bi bi-cash-stack"></i>', clsVal: 'pct-negative' },
     {
       label: 'Hesap Kesim Günü',
       value: investor.billingDay ? `Her ayın ${investor.billingDay}. günü` : 'Her ayın son günü',
@@ -455,24 +565,18 @@ function renderSummaryCard(investor, series, monthly) {
 // ---------------------------------------------------------------------------
 // Performance Card
 // ---------------------------------------------------------------------------
-function renderPerfCard(investor, series, monthly) {
+function renderPerfCard(investor, series, monthly, summary) {
   if (monthly.length === 0) {
     document.getElementById('invPerfBody').innerHTML = `<div class="inv-empty-mini">Henüz veri yok</div>`;
     return;
   }
 
-  const profits = monthly.map((m) => parseFloat(m.monthlyProfit || 0));
-  const avgProfit = profits.reduce((a, b) => a + b, 0) / profits.length;
-  const positiveMonths = profits.filter((p) => p > 0).length;
-  const negativeMonths = profits.filter((p) => p < 0).length;
+  const positiveMonths = Number(summary?.monthlyKpis?.positiveMonths ?? monthly.filter((m) => parseFloat(m.monthlyProfit || 0) > 0).length);
+  const negativeMonths = Number(summary?.monthlyKpis?.negativeMonths ?? monthly.filter((m) => parseFloat(m.monthlyProfit || 0) < 0).length);
+  const avgProfit = parseFloat(summary?.monthlyKpis?.avgMonthlyProfit ?? 0);
   const commRate = parseFloat(investor.commissionRate || 0);
 
-  // Consecutive wins
-  let maxStreak = 0, curStreak = 0;
-  for (const p of profits) {
-    if (p > 0) { curStreak++; maxStreak = Math.max(maxStreak, curStreak); }
-    else curStreak = 0;
-  }
+  const maxStreak = Number(summary?.monthlyKpis?.maxWinStreak ?? 0);
 
   document.getElementById('invPerfBody').innerHTML = `
     <div class="inv-perf-items">
@@ -525,7 +629,7 @@ function renderChart(series) {
 // ---------------------------------------------------------------------------
 // Table
 // ---------------------------------------------------------------------------
-function renderTable(monthly) {
+function renderTable(monthly, summary) {
   const tbody = document.getElementById('invSettlementTable').querySelector('tbody');
   const countBadge = document.getElementById('invSettlementCount');
 
@@ -543,23 +647,29 @@ function renderTable(monthly) {
     return b.month - a.month;
   });
 
+  const summaryCapitalEnd = summary?.capital?.currentCapital != null ? parseFloat(summary.capital.currentCapital) : null;
+  const summaryProfit = summary?.performance?.totalProfit != null ? parseFloat(summary.performance.totalProfit) : null;
+  const summaryCommission = summary?.commissions?.totalCommission != null ? parseFloat(summary.commissions.totalCommission) : null;
+
   tbody.innerHTML = sorted
     .map((m, idx) => {
-      const profit = parseFloat(m.monthlyProfit || 0);
-      const commission = parseFloat(m.commissionAmount || 0);
+      // En güncel satır, panel özetindeki değerlerle birebir uyumlu gösterilir.
+      const isCurrentRow = idx === 0 && summary;
+      const profit = isCurrentRow && summaryProfit !== null ? summaryProfit : parseFloat(m.monthlyProfit ?? 0);
+      const commission = isCurrentRow && summaryCommission !== null ? summaryCommission : parseFloat(m.commissionAmount || 0);
       const isSettled = m.isSettled;
       const rowClass = profit > 0 ? 'inv-tr-positive' : profit < 0 ? 'inv-tr-negative' : '';
 
       return `
       <tr class="${rowClass} inv-tr-animate" style="animation-delay: ${idx * 0.04}s">
         <td>
-          <div class="inv-period-main">${m.year} / ${String(m.month).padStart(2, '0')}</div>
+          <div class="inv-period-main">${isCurrentRow ? 'Güncel' : `${m.year} / ${String(m.month).padStart(2, '0')}`}</div>
           <div class="inv-period-dates text-muted text-sm">
-            ${formatDate(m.periodStart)} → ${formatDate(m.periodEnd)}
+            ${isCurrentRow ? 'Genel özet' : `${formatDate(m.periodStart)} → ${formatDate(m.periodEnd)}`}
           </div>
         </td>
         <td class="text-right">${displayMoney(m.capitalStart)}</td>
-        <td class="text-right fw-600">${displayMoney(m.capitalEnd)}</td>
+        <td class="text-right fw-600">${displayMoney(isCurrentRow && summaryCapitalEnd !== null ? summaryCapitalEnd : m.capitalEnd)}</td>
         <td class="text-right ${pctClass(profit)} fw-700">${displayMoney(profit)}</td>
         <td class="text-right text-warning fw-600">${displayMoney(commission)}</td>
         <td class="text-center">

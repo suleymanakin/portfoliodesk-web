@@ -5,7 +5,10 @@
 import jwt from 'jsonwebtoken';
 import prisma from '../lib/prisma.js';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'portfoliodesk_dev_secret_change_in_production';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (process.env.NODE_ENV === 'production' && !JWT_SECRET) {
+  throw new Error('JWT_SECRET environment variable is required in production.');
+}
 
 /**
  * Authorization: Bearer <token> ile gelen istekleri doğrular, req.user atar.
@@ -20,7 +23,7 @@ export async function jwtAuth(req, res, next) {
   }
 
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, JWT_SECRET || 'portfoliodesk_dev_secret');
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
       include: { investor: true },
@@ -50,5 +53,5 @@ export function requireAdmin(req, res, next) {
 
 export function signToken(userId) {
   const expiresIn = process.env.JWT_EXPIRES_IN || '7d';
-  return jwt.sign({ userId }, JWT_SECRET, { expiresIn });
+  return jwt.sign({ userId }, JWT_SECRET || 'portfoliodesk_dev_secret', { expiresIn });
 }

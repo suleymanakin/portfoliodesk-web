@@ -1,8 +1,8 @@
 /**
  * router.js — Hash-based SPA Router
  * ====================================
- * #/dashboard, #/investors, #/login, #/admin vb. route'ları yönetir.
- * Auth: token yoksa sadece #/login açılır; token varsa #/login → #/dashboard yönlendirilir.
+ * #/dashboard, #/admin vb. route'ları yönetir.
+ * Auth: token yoksa standalone login.html açılır; token varsa app route'ları çalışır.
  */
 
 import AppState from './state.js';
@@ -20,10 +20,17 @@ import { mount as transactionsMount, unmount as transactionsUnmount } from './pa
 import { mount as reportsMount,      unmount as reportsUnmount      } from './pages/reports.js';
 import { mount as settlementsMount,  unmount as settlementsUnmount  } from './pages/settlements.js';
 
+function getBasePath() {
+  // Örn: /app/index.html -> /app/
+  const p = window.location.pathname || '/';
+  return p.endsWith('/index.html') ? p.slice(0, -'index.html'.length) : p.replace(/[^/]*$/, '');
+}
+
 // ---------------------------------------------------------------------------
 // Route tablosu
 // ---------------------------------------------------------------------------
 const ROUTES = {
+  // Login artık standalone sayfada (login.html). Hash içinde login'e izin vermeyelim.
   '/login':             { mount: loginMount,        unmount: loginUnmount,        title: 'Giriş',           navId: null, public: true },
   '/admin':             { mount: adminMount,        unmount: adminUnmount,         title: 'Admin',           navId: 'admin' },
   '/admin/investors':   { mount: adminMount,        unmount: adminUnmount,         title: 'Admin',           navId: 'admin' },
@@ -32,7 +39,7 @@ const ROUTES = {
   '/investor-dashboard': { mount: investorDashMount, unmount: investorDashUnmount, title: 'Yatırımcı Paneli', navId: 'investor-dashboard' },
   '/transactions':      { mount: transactionsMount, unmount: transactionsUnmount, title: 'İşlemler',        navId: 'transactions' },
   '/reports':           { mount: reportsMount,     unmount: reportsUnmount,      title: 'Raporlar',        navId: 'reports' },
-  '/settlements':       { mount: settlementsMount,  unmount: settlementsUnmount,  title: 'Hesap Kesimi',    navId: 'settlements' },
+  '/settlements':       { mount: settlementsMount,  unmount: settlementsUnmount,  title: 'Yatırımcı İşlemleri',    navId: 'settlements' },
 };
 
 let _currentUnmount = null;
@@ -84,9 +91,15 @@ function render(path) {
 
   // Portföy badge (sadece giriş yapılmış sayfalarda)
   if (!isLoginPage) {
-    investorApi.total()
-      .then((data) => updatePortfolioBadge(data?.totalPortfolioValue ?? 0))
-      .catch(() => {});
+    const user = AppState.get('currentUser');
+    // Portfolio total endpoint admin-only. Investor rolünde çağırmak 403 üretir.
+    if (user?.role === 'admin') {
+      investorApi.total()
+        .then((data) => updatePortfolioBadge(data?.totalPortfolioValue ?? 0))
+        .catch(() => {});
+    } else {
+      updatePortfolioBadge('—');
+    }
   }
 
   const sidebar = document.getElementById('sidebar');
@@ -108,11 +121,11 @@ function onHashChange() {
   let path = hash.slice(1) || '/dashboard';
 
   if (!hasToken()) {
-    if (path !== '/login') {
-      window.location.hash = '#/login';
+    // Token yoksa SPA yerine standalone login sayfasına git.
+    if (!window.location.pathname.endsWith('/login.html')) {
+      window.location.href = `${getBasePath()}login.html`;
       return;
     }
-    render(path);
     return;
   }
 
@@ -216,9 +229,8 @@ async function initRouter() {
     } catch (e) {
       localStorage.removeItem('pd_token');
       AppState.set('currentUser', null);
-      if (!window.location.hash || window.location.hash === '#' || window.location.hash === '#/') {
-        window.location.hash = '#/login';
-      }
+      window.location.href = `${getBasePath()}login.html`;
+      return;
     }
   } else {
     AppState.set('currentUser', null);
@@ -226,9 +238,11 @@ async function initRouter() {
 
   if (!window.location.hash || window.location.hash === '#') {
     const user = AppState.get('currentUser');
-    window.location.hash = hasToken()
-      ? (user?.role === 'investor' ? '#/investor-dashboard' : '#/dashboard')
-      : '#/login';
+    if (!hasToken()) {
+      window.location.href = `${getBasePath()}login.html`;
+      return;
+    }
+    window.location.hash = user?.role === 'investor' ? '#/investor-dashboard' : '#/dashboard';
   } else {
     onHashChange();
   }
@@ -262,7 +276,7 @@ function updateAdminNavVisibility() {
 export function logout() {
   localStorage.removeItem('pd_token');
   AppState.set('currentUser', null);
-  window.location.hash = '#/login';
+  window.location.href = `${getBasePath()}login.html`;
 }
 
 initRouter();

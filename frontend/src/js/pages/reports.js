@@ -75,7 +75,7 @@ async function renderMonthly(el) {
     <div class="card card--compact report-period-card mb-1">
       <div class="report-period-select">
         <label class="report-period-label">Ay Seç</label>
-        <select class="form-control" id="monthSel">
+        <select class="form-control form-control--xs" id="monthSel">
           ${months.map((m) => `<option value="${m.year}-${m.month}">${formatMonth(m.year, m.month)}</option>`).join('')}
         </select>
       </div>
@@ -139,7 +139,7 @@ async function renderYearly(el) {
     <div class="card card--compact report-period-card mb-1">
       <div class="report-period-select">
         <label class="report-period-label">Yıl Seç</label>
-        <select class="form-control" id="yearSel">
+        <select class="form-control form-control--xs" id="yearSel">
           ${years.map((y) => `<option value="${y}">${y}</option>`).join('')}
         </select>
       </div>
@@ -180,7 +180,7 @@ async function renderWeekly(el) {
     <div class="card card--compact report-period-card mb-1">
       <div class="report-period-select">
         <label class="report-period-label">Hafta Seç</label>
-        <select class="form-control" id="weekSel">
+        <select class="form-control form-control--xs" id="weekSel">
           ${weeks.map((w) => `<option value="${w}">${formatDate(w)} haftası</option>`).join('')}
         </select>
       </div>
@@ -211,7 +211,7 @@ async function renderInvestorGrowth(el) {
   el.innerHTML = `<div class="card"><div id="growthTable"></div></div>`;
   const cols = [
     { key: 'name',            label: 'Yatırımcı' },
-    { key: 'initialCapital',  label: 'Başlangıç (₺)',  align: 'right', render: (r) => displayMoney(r.initialCapital) },
+    { key: 'initialCapital',  label: 'Ana Para (₺)',  align: 'right', render: (r) => displayMoney(r.initialCapital) },
     { key: 'currentCapital',  label: 'Güncel (₺)',      align: 'right', render: (r) => displayMoney(r.currentCapital) },
     { key: 'totalProfit',     label: 'Toplam Kâr (₺)', align: 'right',
       render: (r) => `<span class="${pctClass(r.totalProfit)}">${displayMoney(r.totalProfit)}</span>` },

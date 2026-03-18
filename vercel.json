@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "installCommand": "cd backend && npm install && npx prisma generate",
+  "installCommand": "npm install",
   "outputDirectory": "frontend",
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api" }

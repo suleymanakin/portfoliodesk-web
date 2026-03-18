@@ -1,10 +1,7 @@
 /**
  * Vercel Serverless Function — Express API'yi /api/* altında sunar.
- * Yerel çalıştırmada kullanılmaz; sadece Vercel deploy'da devreye girer.
- * Hata durumunda her zaman JSON dönülür (HTML hata sayfası önlenir).
+ * Yanıt gönderilene kadar Promise döndürür; hata olursa JSON ile döner.
  */
-import app from '../backend/src/app.js';
-
 function sendJsonError(res, status, message) {
   if (!res.headersSent) {
     res.setHeader('Content-Type', 'application/json');
@@ -12,10 +9,19 @@ function sendJsonError(res, status, message) {
   }
 }
 
-export default function handler(req, res) {
+export default async function handler(req, res) {
+  const waitEnd = new Promise((resolve) => {
+    res.once('finish', resolve);
+    res.once('close', resolve);
+  });
+
   try {
+    const { default: app } = await import('../backend/src/app.js');
     app(req, res);
   } catch (err) {
-    sendJsonError(res, 500, err.message || 'Sunucu hatası.');
+    const msg = err?.message || String(err);
+    sendJsonError(res, 500, `API başlatılamadı: ${msg}`);
   }
+
+  await waitEnd;
 }

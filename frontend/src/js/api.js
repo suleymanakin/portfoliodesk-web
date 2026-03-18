@@ -46,10 +46,16 @@ async function request(path, options = {}) {
 
     if (!res.ok) {
       const errMsg = json?.error || `HTTP ${res.status}`;
-      // Login isteği 401'de token silme / genel toast gösterme (backend mesajı kullanılır)
+      // 401: oturum yok/bitmiş → token sil + kullanıcıyı tekrar girişe yönlendirebiliriz.
+      // 403: yetki yok → token geçerli olabilir, silmeyelim (aksi halde zincirleme 401 üretir).
       if ((res.status === 401 || res.status === 403) && !options.skipAuthRedirect) {
-        localStorage.removeItem('pd_token');
-        showToast('Oturum sonlandı veya yetkiniz yok. Lütfen tekrar giriş yapın.', 'error');
+        if (res.status === 401) localStorage.removeItem('pd_token');
+        showToast(
+          res.status === 401
+            ? 'Oturum sonlandı. Lütfen tekrar giriş yapın.'
+            : 'Bu işlem için yetkiniz yok.',
+          'error'
+        );
       }
       throw Object.assign(new Error(errMsg), { status: res.status, details: json?.details });
     }
@@ -92,10 +98,15 @@ export const userApi = {
 // ---------------------------------------------------------------------------
 // Investors API sadece okuma. Ekleme/düzenleme Admin Panel (userApi) üzerinden.
 export const investorApi = {
-  getAll:      ()           => get('/investors'),
-  getById:     (id)         => get(`/investors/${id}`),
-  getHistory:  (id)         => get(`/investors/${id}/history`),
-  total:       ()           => get('/investors/portfolio/total'),
+  getAll:       ()             => get('/investors'),
+  getById:      (id)           => get(`/investors/${id}`),
+  summary:      (id)           => get(`/investors/${id}/summary`),
+  getHistory:   (id)           => get(`/investors/${id}/history`),
+  movements:    (id)           => (id ? get(`/investors/${id}/movements`) : get('/investors/movements-all')),
+  addMovement:  (id, payload)  => post(`/investors/${id}/movements`, payload),
+  updateMovement: (id, movementId, payload) => put(`/investors/${id}/movements/${movementId}`, payload),
+  deleteMovement: (id, movementId)          => del(`/investors/${id}/movements/${movementId}`),
+  total:        ()             => get('/investors/portfolio/total'),
 };
 
 // ---------------------------------------------------------------------------
@@ -119,6 +130,7 @@ export const settlementApi = {
   getMonths:       ()                       => get('/settlements/months'),
   autoSettle:      ()                       => post('/settlements/auto', {}),
   settleMonth:     (invId, y, m)            => post(`/settlements/${invId}/${y}/${m}/settle`, {}),
+  unsettleMonth:   (invId, y, m)            => post(`/settlements/${invId}/${y}/${m}/unsettle`, {}),
   generateMonth:   (year, month)            => post('/settlements/month', { year, month }),
   preview:         (invId, y, m)            => get(`/settlements/${invId}/${y}/${m}`),
   recalculate:     (invId)                  => post(`/settlements/${invId}/recalculate`, {}),
@@ -128,7 +140,7 @@ export const settlementApi = {
 // Reports
 // ---------------------------------------------------------------------------
 export const reportApi = {
-  portfolioSeries:       ()           => get('/reports/portfolio/series'),
+  portfolioSeries:       (period = 'general') => get(`/reports/portfolio/series${period && period !== 'general' ? `?period=${encodeURIComponent(period)}` : ''}`),
   investorGrowth:        ()           => get('/reports/investors/growth'),
   investorSeries:        (id)         => get(`/reports/investors/${id}/series`),
   investorMonthly:       (id)         => get(`/reports/investors/${id}/monthly`),
@@ -138,6 +150,27 @@ export const reportApi = {
   availableMonths:       ()           => get('/reports/available-months'),
   availableYears:        ()           => get('/reports/available-years'),
   availableWeeks:        ()           => get('/reports/available-weeks'),
+};
+
+// ---------------------------------------------------------------------------
+// Dashboard
+// ---------------------------------------------------------------------------
+export const dashboardApi = {
+  summary: (period = 'general') => get(`/dashboard/summary${period && period !== 'general' ? `?period=${encodeURIComponent(period)}` : ''}`),
+};
+
+// ---------------------------------------------------------------------------
+// Transactions (Unified timeline)
+// ---------------------------------------------------------------------------
+export const transactionsApi = {
+  timeline: ({ investorId = null, dateFrom = null, dateTo = null } = {}) => {
+    const qp = new URLSearchParams();
+    if (investorId) qp.set('investorId', String(investorId));
+    if (dateFrom) qp.set('dateFrom', String(dateFrom));
+    if (dateTo) qp.set('dateTo', String(dateTo));
+    const qs = qp.toString();
+    return get(`/transactions/timeline${qs ? `?${qs}` : ''}`);
+  },
 };
 
 // ---------------------------------------------------------------------------

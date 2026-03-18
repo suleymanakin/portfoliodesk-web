@@ -78,6 +78,26 @@
 .stat-card:hover::before { opacity: 1; }
 .stat-card:hover { border-color: var(--clr-accent-dim); box-shadow: var(--shadow-accent); }
 
+.stat-card-help {
+  position: absolute;
+  top: .75rem;
+  right: .85rem;
+  color: var(--clr-text-muted);
+  cursor: help;
+  line-height: 1;
+}
+.stat-card-help:hover { color: var(--clr-text-secondary); }
+
+.stat-help-inline {
+  position: static;
+  margin-left: .35rem;
+  color: var(--clr-text-muted);
+  cursor: help;
+  font-size: .9em;
+  vertical-align: middle;
+}
+.stat-help-inline:hover { color: var(--clr-text-secondary); }
+
 .stat-icon {
   font-size: 1.5rem;
   margin-bottom: .75rem;
@@ -831,6 +851,18 @@
 /* =========================================================
    FILTER / TOOLBAR ROW
    ========================================================= */
+.tabs-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.25rem;
+}
+
+.tabs-toolbar .tab-bar { margin-bottom: 0; }
+.tabs-toolbar .toolbar { margin-bottom: 0; }
+
 .toolbar {
   display: flex;
   align-items: center;
@@ -840,6 +872,66 @@
 }
 
 .toolbar-spacer { flex: 1; }
+
+.toolbar--inline {
+  justify-content: flex-end;
+  flex: 1;
+}
+
+/* =========================================================
+   PAGE HEADER (optional right controls)
+   ========================================================= */
+.page-header-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.page-header-right {
+  display: flex;
+  align-items: flex-end;
+  gap: .5rem;
+}
+
+/* =========================================================
+   DAILY ENTRY LAYOUT
+   ========================================================= */
+.daily-entry-grid {
+  display: grid;
+  grid-template-columns: 380px 1fr;
+  gap: 1rem;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .daily-entry-grid { grid-template-columns: 1fr; }
+}
+
+/* =========================================================
+   TABLE FILTER CONTROLS (compact)
+   ========================================================= */
+.form-control--xs {
+  height: 30px;
+  padding: .2rem .45rem;
+  font-size: .85rem;
+}
+
+.table thead tr.table-filters th {
+  padding-top: .35rem;
+  padding-bottom: .35rem;
+}
+
+.table thead tr.table-filters .form-control {
+  width: 100%;
+}
+
+/* Transactions timeline: long cell horizontal scroll */
+.tx-cell-scroll {
+  max-width: 320px;
+  overflow-x: auto;
+  white-space: nowrap;
+  text-align: left;
+}
 
 /* =========================================================
    UPCOMING ALERTS (Dashboard)

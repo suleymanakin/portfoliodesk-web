@@ -9,13 +9,21 @@ import {
   updateDailyPercentage,
   recalculateFromDate,
 } from '../engine/calculationEngine.js';
+import {
+  assertNoSettledPeriodOverlapsDate,
+  refreshUnsettledSettlementsForAllInvestorsAtDate,
+} from './settlementService.js';
 
 // ---------------------------------------------------------------------------
 // Create
 // ---------------------------------------------------------------------------
 
 export async function enterDailyResult(targetDate, dailyPct) {
-  return applyDailyPercentage(prisma, targetDate, dailyPct);
+  await assertNoSettledPeriodOverlapsDate(new Date(targetDate));
+  const created = await applyDailyPercentage(prisma, targetDate, dailyPct);
+  // Yeni günlük giriş, ilgili ayın (unsettled) settlement'larını etkileyebilir.
+  await refreshUnsettledSettlementsForAllInvestorsAtDate(new Date(targetDate));
+  return created;
 }
 
 // ---------------------------------------------------------------------------
@@ -65,7 +73,9 @@ export async function dateHasResult(targetDate) {
 // ---------------------------------------------------------------------------
 
 export async function modifyDailyResult(targetDate, newPct) {
+  await assertNoSettledPeriodOverlapsDate(new Date(targetDate));
   await updateDailyPercentage(prisma, targetDate, newPct);
+  await refreshUnsettledSettlementsForAllInvestorsAtDate(new Date(targetDate));
   return getDailyResult(targetDate);
 }
 
@@ -74,6 +84,7 @@ export async function modifyDailyResult(targetDate, newPct) {
 // ---------------------------------------------------------------------------
 
 export async function deleteDailyResult(targetDate) {
+  await assertNoSettledPeriodOverlapsDate(new Date(targetDate));
   const result = await prisma.dailyResult.findUnique({
     where: { date: new Date(targetDate) },
   });
@@ -81,4 +92,5 @@ export async function deleteDailyResult(targetDate) {
 
   await prisma.dailyResult.delete({ where: { id: result.id } });
   await recalculateFromDate(prisma, targetDate);
+  await refreshUnsettledSettlementsForAllInvestorsAtDate(new Date(targetDate));
 }

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { body, param } from 'express-validator';
 import { handleValidationErrors } from '../middleware/validate.js';
 import * as dailyResultService from '../services/dailyResultService.js';
+import { requireAdmin } from '../middleware/auth.js';
 
 const router = Router();
 
@@ -49,6 +50,7 @@ router.get('/:date',
 // POST /api/daily-results — Yeni giriş
 // ---------------------------------------------------------------------------
 router.post('/',
+  requireAdmin,
   [
     body('date').matches(/^\d{4}-\d{2}-\d{2}$/).withMessage('Tarih YYYY-MM-DD formatında olmalıdır'),
     body('dailyPercentage')
@@ -69,6 +71,7 @@ router.post('/',
 // PUT /api/daily-results/:date — Güncelle (kaskad tetikler)
 // ---------------------------------------------------------------------------
 router.put('/:date',
+  requireAdmin,
   [
     param('date').matches(/^\d{4}-\d{2}-\d{2}$/).withMessage('Tarih YYYY-MM-DD formatında olmalıdır'),
     body('dailyPercentage')
@@ -88,6 +91,7 @@ router.put('/:date',
 // DELETE /api/daily-results/:date
 // ---------------------------------------------------------------------------
 router.delete('/:date',
+  requireAdmin,
   [param('date').matches(/^\d{4}-\d{2}-\d{2}$/).withMessage('Tarih YYYY-MM-DD formatında olmalıdır')],
   handleValidationErrors,
   async (req, res, next) => {

@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import './loadEnv.js';
 import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
@@ -12,6 +12,9 @@ import investorsRouter from './routes/investors.js';
 import dailyResultsRouter from './routes/dailyResults.js';
 import settlementsRouter from './routes/settlements.js';
 import reportsRouter from './routes/reports.js';
+import adminRouter from './routes/admin.js';
+import dashboardRouter from './routes/dashboard.js';
+import transactionsRouter from './routes/transactions.js';
 import { errorHandler, notFound } from './middleware/errorHandler.js';
 
 const app = express();
@@ -79,6 +82,9 @@ app.use('/api/investors', investorsRouter);
 app.use('/api/daily-results', dailyResultsRouter);
 app.use('/api/settlements', settlementsRouter);
 app.use('/api/reports', reportsRouter);
+app.use('/api/admin', adminRouter);
+app.use('/api/dashboard', dashboardRouter);
+app.use('/api/transactions', transactionsRouter);
 
 // ---------------------------------------------------------------------------
 // 404 & Global error handler (en sonda olmalı)

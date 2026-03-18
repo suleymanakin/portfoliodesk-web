@@ -7,6 +7,12 @@ import AppState from '../state.js';
 import { showToast } from '../components/toast.js';
 import { escapeHtml } from '../utils.js';
 
+function getBasePathFromLoginPage() {
+  // login.html aynı dizinde: /app/login.html -> /app/
+  const p = window.location.pathname || '/';
+  return p.endsWith('/login.html') ? p.slice(0, -'login.html'.length) : p.replace(/[^/]*$/, '');
+}
+
 export function mount(container) {
   container.innerHTML = `
     <div class="login-page">
@@ -55,7 +61,14 @@ export function mount(container) {
       AppState.set('currentUser', user);
       const displayName = user.investor?.name ?? user.username;
       showToast(`Hoş geldiniz, ${escapeHtml(displayName)}.`, 'success');
-      window.location.hash = user.role === 'investor' ? '#/investor-dashboard' : '#/dashboard';
+      const targetHash = user.role === 'investor' ? '#/investor-dashboard' : '#/dashboard';
+      // Standalone login sayfasında (#/ olmadan) index.html'e yönlendir.
+      if (window.location.pathname.endsWith('/login.html') || window.location.pathname === '/login.html') {
+        const base = getBasePathFromLoginPage();
+        window.location.href = `${base}${targetHash}`;
+      } else {
+        window.location.hash = targetHash;
+      }
     } catch (err) {
       submitBtn.disabled = false;
       submitBtn.textContent = 'Giriş Yap';

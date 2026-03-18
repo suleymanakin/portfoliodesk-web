@@ -16,6 +16,33 @@ const HUNDRED = new Decimal('100');
 const ZERO = new Decimal('0');
 const ONE = new Decimal('1');
 
+function toDateOnly(date) {
+  const d = date instanceof Date ? date : new Date(date);
+  return new Date(d.toISOString().slice(0, 10));
+}
+
+async function netMovementsBetween(prisma, investorId, opts) {
+  const { gtDate = null, gteDate = null, ltDate = null, lteDate = null } = opts || {};
+  const where = { investorId };
+  if (gtDate || gteDate || ltDate || lteDate) {
+    where.date = {};
+    if (gtDate) where.date.gt = toDateOnly(gtDate);
+    if (gteDate) where.date.gte = toDateOnly(gteDate);
+    if (ltDate) where.date.lt = toDateOnly(ltDate);
+    if (lteDate) where.date.lte = toDateOnly(lteDate);
+  }
+
+  const moves = await prisma.capitalMovement.findMany({
+    where,
+    select: { type: true, amount: true },
+  });
+
+  return moves.reduce((sum, mv) => {
+    const amt = new Decimal(mv.amount.toString());
+    return mv.type === 'withdraw' ? sum.minus(amt) : sum.plus(amt);
+  }, ZERO);
+}
+
 // ---------------------------------------------------------------------------
 // getBillingPeriod — Dönem başı / sonu hesaplama
 // ---------------------------------------------------------------------------
@@ -60,17 +87,24 @@ export function getBillingPeriod(year, month, billingDay) {
 // ---------------------------------------------------------------------------
 
 export async function getInvestorCapitalAtDate(prisma, investorId, targetDate) {
+  const td = toDateOnly(targetDate);
   const hist = await prisma.investorHistory.findFirst({
     where: {
       investorId,
-      date: { lte: targetDate },
+      date: { lte: td },
     },
     orderBy: { date: 'desc' },
   });
-  if (hist) return new Decimal(hist.capitalAfter.toString());
+  if (hist) {
+    const base = new Decimal(hist.capitalAfter.toString());
+    const net = await netMovementsBetween(prisma, investorId, { gtDate: hist.date, lteDate: td });
+    return base.plus(net);
+  }
 
   const inv = await prisma.investor.findUnique({ where: { id: investorId } });
-  return inv ? new Decimal(inv.initialCapital.toString()) : ZERO;
+  const base = inv ? new Decimal(inv.initialCapital.toString()) : ZERO;
+  const net = await netMovementsBetween(prisma, investorId, { lteDate: td });
+  return base.plus(net);
 }
 
 
@@ -79,17 +113,55 @@ export async function getInvestorCapitalAtDate(prisma, investorId, targetDate) {
 // ---------------------------------------------------------------------------
 
 export async function getInvestorCapitalBeforeDate(prisma, investorId, targetDate) {
+  const td = toDateOnly(targetDate);
   const hist = await prisma.investorHistory.findFirst({
     where: {
       investorId,
-      date: { lt: targetDate },
+      date: { lt: td },
     },
     orderBy: { date: 'desc' },
   });
-  if (hist) return new Decimal(hist.capitalAfter.toString());
+  if (hist) {
+    const base = new Decimal(hist.capitalAfter.toString());
+    const net = await netMovementsBetween(prisma, investorId, { gtDate: hist.date, ltDate: td });
+    return base.plus(net);
+  }
 
   const inv = await prisma.investor.findUnique({ where: { id: investorId } });
-  return inv ? new Decimal(inv.initialCapital.toString()) : ZERO;
+  const base = inv ? new Decimal(inv.initialCapital.toString()) : ZERO;
+  const net = await netMovementsBetween(prisma, investorId, { ltDate: td });
+  return base.plus(net);
+}
+
+// ---------------------------------------------------------------------------
+// getInvestorCapitalAtStartOfDate — Gün başı sermaye (movement dahil)
+// ---------------------------------------------------------------------------
+
+/**
+ * Günün BAŞINDA geçerli sermayeyi verir:
+ * - targetDate günündeki Ana Para hareketleri (movement.date == targetDate) DAHİL edilir.
+ * - price movement (daily pct) uygulanmadan önceki sermayedir.
+ */
+export async function getInvestorCapitalAtStartOfDate(prisma, investorId, targetDate) {
+  const td = toDateOnly(targetDate);
+  const hist = await prisma.investorHistory.findFirst({
+    where: {
+      investorId,
+      date: { lt: td },
+    },
+    orderBy: { date: 'desc' },
+  });
+
+  if (hist) {
+    const base = new Decimal(hist.capitalAfter.toString());
+    const net = await netMovementsBetween(prisma, investorId, { gtDate: hist.date, lteDate: td });
+    return base.plus(net);
+  }
+
+  const inv = await prisma.investor.findUnique({ where: { id: investorId } });
+  const base = inv ? new Decimal(inv.initialCapital.toString()) : ZERO;
+  const net = await netMovementsBetween(prisma, investorId, { lteDate: td });
+  return base.plus(net);
 }
 
 
@@ -122,11 +194,26 @@ export async function calculateSettlement(prisma, investorId, year, month) {
 
   const { periodStart, periodEnd } = getBillingPeriod(year, month, inv.billingDay);
 
-  const capitalStart = await getInvestorCapitalBeforeDate(prisma, investorId, periodStart);
+  // Dönem başı sermaye, periodStart günündeki Ana Para hareketleri dahil (gün başı).
+  // Böylece komisyon gibi hareketler “dönem sonundan değil, dönem başı anaparadan düşülmüş” görünür.
+  const capitalStart = await getInvestorCapitalAtStartOfDate(prisma, investorId, periodStart);
   let capitalEnd = await getInvestorCapitalAtDate(prisma, investorId, periodEnd);
-  if (capitalEnd.isZero() && capitalStart.greaterThan(ZERO)) capitalEnd = capitalStart;
+  if (capitalEnd.isZero() && capitalStart.greaterThan(ZERO)) {
+    capitalEnd = capitalStart;
+  }
 
-  const monthlyProfit = capitalEnd.minus(capitalStart);
+  // Aylık kârı sadece fiyat hareketlerinden (dailyProfit toplamı) hesapla.
+  // Dönem içindeki Ana Para giriş/çıkışları kâr değil, sermaye hareketidir.
+  const histories = await prisma.investorHistory.findMany({
+    where: {
+      investorId,
+      date: { gte: periodStart, lte: periodEnd },
+    },
+  });
+  const monthlyProfit = histories.reduce(
+    (sum, h) => sum.plus(new Decimal(h.dailyProfit.toString())),
+    ZERO,
+  );
   const carryForwardLoss = await getPreviousCarryForward(prisma, investorId, year, month);
   const netProfit = monthlyProfit.plus(carryForwardLoss);
 

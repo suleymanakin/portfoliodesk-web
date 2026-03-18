@@ -96,6 +96,10 @@ Varsayılan olarak frontend `http://localhost:3001/api` adresine istek atar. Can
 
 Test veya canlı ortam için Vercel’e deploy adımları: [docs/VERCEL-KURULUM.md](docs/VERCEL-KURULUM.md)
 
+## Kullanım (son kullanıcılar için)
+
+Uygulamayı ilk kez kullanacak kişiler için adım adım kılavuz: **[docs/KULLANIM-KILAVUZU.md](docs/KULLANIM-KILAVUZU.md)**.
+
 ## Production
 
 Canlı ortama almadan önce [docs/PRODUCTION-CHECKLIST.md](docs/PRODUCTION-CHECKLIST.md) kontrol listesini kullanın.

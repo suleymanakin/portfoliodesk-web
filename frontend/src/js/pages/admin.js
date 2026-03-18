@@ -34,14 +34,16 @@ export async function mount(container) {
       <h1 class="page-title">${headerTitle}</h1>
       <p class="page-subtitle">${headerSubtitle}</p>
     </div>
-    <div class="tab-bar admin-tabs" role="tablist">
-      <a href="#/admin" class="tab-btn ${activeTab === TAB_ACCOUNTS ? 'active' : ''}" role="tab" id="tab-accounts">Giriş Hesapları</a>
-      <a href="#/admin/investors" class="tab-btn ${activeTab === TAB_INVESTORS ? 'active' : ''}" role="tab" id="tab-investors">Yatırımcılar</a>
+    <div class="tabs-toolbar">
+      <div class="tab-bar admin-tabs" role="tablist">
+        <a href="#/admin" class="tab-btn ${activeTab === TAB_ACCOUNTS ? 'active' : ''}" role="tab" id="tab-accounts">Giriş Hesapları</a>
+        <a href="#/admin/investors" class="tab-btn ${activeTab === TAB_INVESTORS ? 'active' : ''}" role="tab" id="tab-investors">Yatırımcılar</a>
+      </div>
+      <div class="toolbar toolbar--inline">
+        <button class="btn btn-primary" id="addUserBtn" style="${activeTab === TAB_ACCOUNTS ? '' : 'display:none'}"><i class="bi bi-person-plus"></i> Yeni Yatırımcı</button>
+      </div>
     </div>
     <div id="admin-tab-panel-accounts" class="admin-tab-panel" role="tabpanel" aria-labelledby="tab-accounts" style="${activeTab !== TAB_ACCOUNTS ? 'display:none' : ''}">
-      <div class="toolbar">
-        <button class="btn btn-primary" id="addUserBtn"><i class="bi bi-person-plus"></i> Yeni Yatırımcı</button>
-      </div>
       <div class="table-responsive">
         <div id="adminUsersTable"></div>
       </div>
@@ -168,7 +170,7 @@ function openUserModal(container) {
           <input id="userName" class="form-control" placeholder="Ad Soyad"/>
         </div>
         <div class="form-group">
-          <label class="form-label">Başlangıç Sermayesi (₺)</label>
+          <label class="form-label">Ana Para (₺)</label>
           <input id="userCapital" class="form-control" type="number" min="0" step="0.01" placeholder="100000"/>
         </div>
         <div class="form-group">
@@ -205,7 +207,7 @@ function openUserModal(container) {
         const rate = document.getElementById('userRate')?.value;
         const billing = document.getElementById('userBilling')?.value;
         if (!name) throw new Error('Ad Soyad zorunludur');
-        if (!capital) throw new Error('Başlangıç sermayesi zorunludur');
+        if (!capital) throw new Error('Ana Para zorunludur');
         payload.name = name;
         payload.initialCapital = capital;
         payload.startDate = startDate || undefined;

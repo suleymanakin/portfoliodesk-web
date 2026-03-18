@@ -11,17 +11,30 @@ datasource db {
 }
 
 // ---------------------------------------------------------------------------
+// Enums — DB seviyesinde veri kalitesi
+// ---------------------------------------------------------------------------
+enum UserRole {
+  admin
+  investor
+}
+
+enum MovementType {
+  deposit
+  withdraw
+}
+
+// ---------------------------------------------------------------------------
 // User — Giriş yapan kullanıcı (admin veya yatırımcı)
 // ---------------------------------------------------------------------------
 model User {
-  id           Int       @id @default(autoincrement())
-  username     String    @unique @db.VarChar(100)
-  passwordHash String    @map("password_hash") @db.VarChar(255)
-  role         String    @db.VarChar(20)   // 'admin' | 'investor'
-  investorId   Int?      @unique @map("investor_id")  // Yatırımcı kullanıcılar için
-  isActive     Boolean   @default(true)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id           Int      @id @default(autoincrement())
+  username     String   @unique @db.VarChar(100)
+  passwordHash String   @map("password_hash") @db.VarChar(255)
+  role         UserRole
+  investorId   Int?     @unique @map("investor_id") // Yatırımcı kullanıcılar için
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   investor Investor? @relation(fields: [investorId], references: [id], onDelete: Cascade)
 
@@ -32,34 +45,55 @@ model User {
 // Investor — Yatırımcı profil ve güncel sermaye
 // ---------------------------------------------------------------------------
 model Investor {
-  id             Int       @id @default(autoincrement())
-  name           String    @db.VarChar(200)
-  initialCapital Decimal   @db.Decimal(20, 10)
-  currentCapital Decimal   @db.Decimal(20, 10)
-  commissionRate Decimal   @db.Decimal(10, 4)   @default(0)
-  billingDay     Int?      // 1-28, null = ay sonu
-  startDate      DateTime? @db.Date              // Yatırımcının sisteme giriş tarihi
-  isActive       Boolean   @default(true)
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  id              Int       @id @default(autoincrement())
+  name            String    @db.VarChar(200)
+  initialCapital  Decimal   @db.Decimal(20, 10)
+  currentCapital  Decimal   @db.Decimal(20, 10)
+  realizedProfit  Decimal   @default(0) @db.Decimal(20, 10) // Kesinleşen dönem kârlarının anaparaya eklenmiş kısmı
+  profitResetDate DateTime? @db.Date // Son kesinleşen dönem sonu (dönem kârı bu tarihten sonra hesaplanır)
+  commissionRate  Decimal   @default(0) @db.Decimal(10, 4)
+  billingDay      Int? // 1-28, null = ay sonu
+  startDate       DateTime? @db.Date // Yatırımcının sisteme giriş tarihi
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  user       User?
+  user        User?
   history     InvestorHistory[]
   settlements MonthlySettlement[]
+  movements   CapitalMovement[]
 
   @@map("investors")
+}
+
+// ---------------------------------------------------------------------------
+// CapitalMovement — Yatırımcı para giriş/çıkış (Ana Para hareketleri)
+// ---------------------------------------------------------------------------
+model CapitalMovement {
+  id         Int          @id @default(autoincrement())
+  investorId Int
+  date       DateTime     @db.Date
+  type       MovementType
+  amount     Decimal      @db.Decimal(20, 10)
+  note       String?      @db.VarChar(500)
+  createdAt  DateTime     @default(now())
+
+  investor Investor @relation(fields: [investorId], references: [id], onDelete: Cascade)
+
+  @@index([investorId, date, id])
+  @@map("capital_movements")
 }
 
 // ---------------------------------------------------------------------------
 // DailyResult — Portföy geneli günlük sonuç
 // ---------------------------------------------------------------------------
 model DailyResult {
-  id                 Int      @id @default(autoincrement())
-  date               DateTime @unique @db.Date
-  dailyPercentage    Decimal  @db.Decimal(10, 6)
-  totalPortfolioValue Decimal @db.Decimal(20, 10)
-  totalCommission    Decimal  @db.Decimal(20, 10)  @default(0)
-  createdAt          DateTime @default(now())
+  id                  Int      @id @default(autoincrement())
+  date                DateTime @unique @db.Date
+  dailyPercentage     Decimal  @db.Decimal(10, 6)
+  totalPortfolioValue Decimal  @db.Decimal(20, 10)
+  totalCommission     Decimal  @default(0) @db.Decimal(20, 10)
+  createdAt           DateTime @default(now())
 
   investorHistories InvestorHistory[]
 
@@ -77,14 +111,12 @@ model InvestorHistory {
   capitalBefore    Decimal  @db.Decimal(20, 10)
   capitalAfter     Decimal  @db.Decimal(20, 10)
   dailyProfit      Decimal  @db.Decimal(20, 10)
-  commissionAmount Decimal  @db.Decimal(20, 10)  @default(0)
+  commissionAmount Decimal  @default(0) @db.Decimal(20, 10)
 
   investor    Investor     @relation(fields: [investorId], references: [id], onDelete: Cascade)
   dailyResult DailyResult? @relation(fields: [dailyResultId], references: [id], onDelete: Cascade)
 
   @@unique([investorId, date])
-  @@index([investorId])
-  @@index([date])
   @@map("investor_history")
 }
 
@@ -101,9 +133,9 @@ model MonthlySettlement {
   capitalStart     Decimal  @db.Decimal(20, 10)
   capitalEnd       Decimal  @db.Decimal(20, 10)
   monthlyProfit    Decimal  @db.Decimal(20, 10)
-  commissionAmount Decimal  @db.Decimal(20, 10)  @default(0)
+  commissionAmount Decimal  @default(0) @db.Decimal(20, 10)
   isSettled        Boolean  @default(false)
-  carryForwardLoss Decimal  @db.Decimal(20, 10)  @default(0)
+  carryForwardLoss Decimal  @default(0) @db.Decimal(20, 10)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 

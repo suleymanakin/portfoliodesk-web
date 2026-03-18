@@ -17,8 +17,23 @@ const ZERO = new Decimal('0');
 // Portfolio zaman serisi (grafik için)
 // ---------------------------------------------------------------------------
 
-export async function getPortfolioDailySeries() {
+function parsePeriodToFromDate(periodKey) {
+  const key = String(periodKey || 'general');
+  if (!key || key === 'general') return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const from = new Date(today);
+  if (key === 'last1m') from.setMonth(from.getMonth() - 1);
+  else if (key === 'last6m') from.setMonth(from.getMonth() - 6);
+  else if (key === 'last1y') from.setFullYear(from.getFullYear() - 1);
+  else return null;
+  return from;
+}
+
+export async function getPortfolioDailySeries(periodKey = 'general') {
+  const fromDate = parsePeriodToFromDate(periodKey);
   const results = await prisma.dailyResult.findMany({
+    ...(fromDate ? { where: { date: { gte: fromDate } } } : {}),
     orderBy: { date: 'asc' },
     select: { date: true, totalPortfolioValue: true, dailyPercentage: true },
   });
@@ -212,6 +227,9 @@ export async function getInvestorMonthlyPerformance(investorId) {
     capitalEnd: s.capitalEnd.toString(),
     monthlyProfit: s.monthlyProfit.toString(),
     commissionAmount: s.commissionAmount.toString(),
+    netProfitAfterCommission: new Decimal(s.monthlyProfit.toString())
+      .minus(new Decimal(s.commissionAmount.toString()))
+      .toString(),
     carryForwardLoss: s.carryForwardLoss.toString(),
     isSettled: s.isSettled,
   }));

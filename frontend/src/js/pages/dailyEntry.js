@@ -17,33 +17,35 @@ export async function mount(container) {
       <p class="page-subtitle">Portföy yöneticisi günlük yüzde girişi yapar</p>
     </div>
 
-    <div class="card mb-1-5 mw-480">
-      <div class="card-header"><span class="card-title">Yeni Giriş</span></div>
-      <form id="dailyForm">
-        <div class="form-group">
-          <label class="form-label" for="dailyDate">Tarih</label>
-          <input class="form-control" type="date" id="dailyDate" value="${todayISO()}" required/>
-        </div>
-        <div class="form-group">
-          <label class="form-label" for="dailyPct">Günlük Yüzde (%)</label>
-          <input class="form-control" type="number" id="dailyPct" step="0.0001"
-            placeholder="Örn: 2.5 ya da -1.3" required/>
-        </div>
-        <div id="dailyPreview" class="mb-075 text-sm text-secondary"></div>
-        <button class="btn btn-primary" type="submit" id="submitBtn"><i class="bi bi-calendar-check"></i> Kaydet</button>
-      </form>
-    </div>
-
-    <div class="card">
-      <div class="card-header">
-        <span class="card-title">Geçmiş Kayıtlar</span>
-        <div class="flex-gap">
-          <select class="form-control form-control--auto" id="monthFilter">
-            <option value="">Tüm Aylar</option>
-          </select>
-        </div>
+    <div class="daily-entry-grid">
+      <div class="card">
+        <div class="card-header"><span class="card-title">Yeni Giriş</span></div>
+        <form id="dailyForm">
+          <div class="form-group">
+            <label class="form-label" for="dailyDate">Tarih</label>
+            <input class="form-control" type="date" id="dailyDate" value="${todayISO()}" required/>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="dailyPct">Günlük Yüzde (%)</label>
+            <input class="form-control" type="number" id="dailyPct" step="0.0001"
+              placeholder="Örn: 2.5 ya da -1.3" required/>
+          </div>
+          <div id="dailyPreview" class="mb-075 text-sm text-secondary"></div>
+          <button class="btn btn-primary" type="submit" id="submitBtn"><i class="bi bi-calendar-check"></i> Kaydet</button>
+        </form>
       </div>
-      <div id="dailyTable">Yükleniyor…</div>
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Geçmiş Kayıtlar</span>
+          <div class="flex-gap">
+            <select class="form-control form-control--auto form-control--xs" id="monthFilter">
+              <option value="">Tüm Aylar</option>
+            </select>
+          </div>
+        </div>
+        <div id="dailyTable">Yükleniyor…</div>
+      </div>
     </div>
   `;
 

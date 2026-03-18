@@ -56,7 +56,7 @@ export async function createUserWithInvestor(body) {
 
   if (!isAdmin) {
     if (!name || !String(name).trim()) throw Object.assign(new Error('Ad Soyad zorunludur (yatırımcı için).'), { status: 422 });
-    if (!initialCapital) throw Object.assign(new Error('Başlangıç sermayesi zorunludur (yatırımcı için).'), { status: 422 });
+    if (!initialCapital) throw Object.assign(new Error('Ana Para zorunludur (yatırımcı için).'), { status: 422 });
     const investor = await investorService.addInvestor({
       name: String(name).trim(),
       initialCapital: String(initialCapital),

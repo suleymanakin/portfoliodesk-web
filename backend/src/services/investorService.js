@@ -6,7 +6,15 @@
 
 import Decimal from 'decimal.js';
 import prisma from '../lib/prisma.js';
-import { backfillInvestorFromDate } from '../engine/calculationEngine.js';
+import {
+  recalculateFromDate,
+  getEarliestDailyResultDate,
+} from '../engine/calculationEngine.js';
+import {
+  assertNoSettledSettlementsForInvestor,
+  regenerateSettlementsForInvestor,
+  recalculateAllSettlementsForInvestor,
+} from './settlementService.js';
 
 const ZERO = new Decimal('0');
 
@@ -21,7 +29,7 @@ export async function addInvestor({ name, initialCapital, commissionRate = '0', 
 
   const capital = new Decimal(String(initialCapital));
   if (capital.lessThanOrEqualTo(ZERO)) {
-    throw Object.assign(new Error('Başlangıç sermayesi sıfırdan büyük olmalıdır.'), { status: 422 });
+    throw Object.assign(new Error('Ana Para sıfırdan büyük olmalıdır.'), { status: 422 });
   }
 
   // startDate gelecekte olamaz (Yerel saate göre YYYY-MM-DD kontrolü)
@@ -45,10 +53,10 @@ export async function addInvestor({ name, initialCapital, commissionRate = '0', 
     },
   });
 
-  // startDate varsa geçmiş günleri retroaktif hesapla
+  // startDate varsa tüm günlük sonuçları baştan yeniden hesapla (yeni yatırımcı dahil, Ana Para hareketleri dahil)
   if (startDate) {
-    await backfillInvestorFromDate(prisma, investor.id, startDate, capital.toString());
-    // Güncel capital'i tekrar çek (backfill güncelledi)
+    const from = await getEarliestDailyResultDate(prisma);
+    await recalculateFromDate(prisma, from || startDate);
     return prisma.investor.findUnique({ where: { id: investor.id } });
   }
 
@@ -88,6 +96,20 @@ export async function updateInvestor(id, { name, isActive, commissionRate, billi
     }
   }
 
+  // startDate gerçekten değiştiyse (sadece gönderildi diye değil) tespit et (DB güncellemeden önce)
+  const startDateProvided = startDate !== undefined && startDate !== null;
+  let startDateChanged = false;
+  if (startDateProvided) {
+    const newStr = String(startDate).slice(0, 10);
+    const oldStr = existing.startDate ? existing.startDate.toISOString().slice(0, 10) : null;
+    if (oldStr !== newStr) startDateChanged = true;
+  }
+
+  // Immutable settlement politikası: settled kayıt varsa startDate değişimi engellenir
+  if (startDateChanged) {
+    await assertNoSettledSettlementsForInvestor(Number(id));
+  }
+
   const data = {};
   if (name !== undefined) data.name = String(name).trim();
   if (isActive !== undefined) data.isActive = Boolean(isActive);
@@ -98,12 +120,25 @@ export async function updateInvestor(id, { name, isActive, commissionRate, billi
   // Önce DB'yi güncelle
   const updated = await prisma.investor.update({ where: { id: Number(id) }, data });
 
-  // startDate gönderildiyse geçmişe dönük yeniden hesapla
-  if (startDate !== undefined && startDate !== null) {
-    // initialCapital'i mevcut kayıttan al
-    const initialCapital = existing.initialCapital.toString();
-    await backfillInvestorFromDate(prisma, Number(id), startDate, initialCapital);
+  if (startDateChanged) {
+    const from = await getEarliestDailyResultDate(prisma);
+    await recalculateFromDate(prisma, from || String(startDate).slice(0, 10));
+    // startDate değişiminde dönem seti de değişebilir: tüm unsettled dönemleri yeniden üret
+    await regenerateSettlementsForInvestor(Number(id));
     return prisma.investor.findUnique({ where: { id: Number(id) } });
+  }
+
+  // Eğer sadece komisyon oranı veya billingDay değiştiyse, geçmiş hesap kesimlerini güncelle
+  const commissionChanged =
+    commissionRate !== undefined &&
+    new Decimal(String(commissionRate)).toString() !== existing.commissionRate.toString();
+
+  const billingDayChanged =
+    billingDay !== undefined &&
+    ((billingDay !== null ? Number(billingDay) : null) !== existing.billingDay);
+
+  if (commissionChanged || billingDayChanged) {
+    await recalculateAllSettlementsForInvestor(Number(id));
   }
 
   return updated;
@@ -115,7 +150,9 @@ export async function updateInvestor(id, { name, isActive, commissionRate, billi
 
 export async function deleteInvestor(id) {
   await getInvestorById(id); // 404 kontrolü
-  return prisma.investor.delete({ where: { id: Number(id) } });
+  await prisma.investor.delete({ where: { id: Number(id) } });
+  const from = await getEarliestDailyResultDate(prisma);
+  if (from) await recalculateFromDate(prisma, from);
 }
 
 // ---------------------------------------------------------------------------

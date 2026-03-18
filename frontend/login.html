@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+  <meta name="description" content="PortfolioDesk — Giriş"/>
+  <title>PortfolioDesk — Giriş</title>
+
+  <!-- Vercel / canlı: API aynı origin'de (/api) -->
+  <script>
+  (function(){
+    if (location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+      window.PD_API_URL = '/api';
+    }
+  })();
+  </script>
+
+  <!-- Tema: ilk paint öncesi uygula (flash önleme) -->
+  <script>
+  (function(){
+    var stored = localStorage.getItem('pd_theme');
+    var theme = (stored === 'light' || stored === 'dark') ? stored
+      : (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+    document.documentElement.setAttribute('data-theme', theme);
+  })();
+  </script>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <!-- Bootstrap Icons -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"/>
+
+  <!-- Styles (aynı theme) -->
+  <link rel="stylesheet" href="src/css/main.css"/>
+  <link rel="stylesheet" href="src/css/components.css"/>
+  <link rel="stylesheet" href="src/css/utilities.css"/>
+  <link rel="stylesheet" href="src/css/responsive.css"/>
+</head>
+<body class="login-view">
+  <main class="main-content" id="appContent">
+    <div class="page-loading">
+      <div class="spinner"></div>
+      <p>Yükleniyor...</p>
+    </div>
+  </main>
+
+  <div class="toast-container" id="toastContainer" aria-live="polite"></div>
+  <div class="modal-overlay" id="modalOverlay" aria-modal="true" role="dialog"></div>
+
+  <!-- JS -->
+  <script src="src/js/theme.js"></script>
+  <script type="module" src="src/js/state.js"></script>
+  <script type="module" src="src/js/utils.js"></script>
+  <script type="module" src="src/js/api.js"></script>
+  <script type="module" src="src/js/components/toast.js"></script>
+  <script type="module" src="src/js/components/modal.js"></script>
+  <script type="module" src="src/js/pages/login.js"></script>
+  <script type="module" src="src/js/login-standalone.js"></script>
+</body>
+</html>
+

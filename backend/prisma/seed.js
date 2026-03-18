@@ -5,11 +5,21 @@ import Decimal from 'decimal.js';
 const prisma = new PrismaClient();
 
 async function main() {
+  if (process.env.ALLOW_SEED !== 'true') {
+    console.error('Seed engellendi. Çalıştırmak için ALLOW_SEED=true ayarlayın.');
+    process.exit(1);
+  }
+
   console.log('🌱 Seed verisi yükleniyor...');
 
-  // Admin kullanıcı (kullanıcı adı: admin, şifre: admin123)
-  const adminUsername = 'admin';
-  const adminPasswordHash = await bcrypt.hash('admin123', 10);
+  // Admin kullanıcı (env ile belirlenmeli)
+  const adminUsername = process.env.ADMIN_USERNAME || 'admin';
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  if (!adminPassword) {
+    console.error('ADMIN_PASSWORD zorunludur (seed).');
+    process.exit(1);
+  }
+  const adminPasswordHash = await bcrypt.hash(adminPassword, 10);
   await prisma.user.upsert({
     where: { username: adminUsername },
     update: {},
@@ -21,7 +31,7 @@ async function main() {
       isActive: true,
     },
   });
-  console.log('✅ Admin kullanıcı: ' + adminUsername + ' / admin123');
+  console.log('✅ Admin kullanıcı hazır: ' + adminUsername);
 
   // Örnek yatırımcılar
   const investors = [
