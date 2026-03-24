@@ -5,7 +5,9 @@
   "type": "module",
   "main": "src/app.js",
   "scripts": {
+    "predev": "prisma migrate deploy",
     "dev": "nodemon src/app.js",
+    "prestart": "prisma migrate deploy",
     "start": "node src/app.js",
     "test": "node --test",
     "db:migrate": "prisma migrate dev",
@@ -26,10 +28,10 @@
     "jsonwebtoken": "^9.0.2",
     "bcryptjs": "^2.4.3",
     "express-rate-limit": "^7.4.1",
-    "morgan": "^1.10.0"
+    "morgan": "^1.10.0",
+    "prisma": "^5.22.0"
   },
   "devDependencies": {
-    "nodemon": "^3.1.7",
-    "prisma": "^5.22.0"
+    "nodemon": "^3.1.7"
   }
 }

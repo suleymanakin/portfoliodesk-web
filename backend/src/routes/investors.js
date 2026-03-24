@@ -58,6 +58,26 @@ router.get('/movements-all',
 );
 
 // ---------------------------------------------------------------------------
+// PATCH /api/investors/:id/kpi-display — Yatırımcı paneli gösterim alanları (hesaplamada kullanılmaz)
+// ---------------------------------------------------------------------------
+router.patch('/:id/kpi-display',
+  jwtAuth,
+  requireAdmin,
+  [
+    param('id').isInt({ min: 1 }).withMessage('Geçerli bir ID giriniz'),
+    body('dashboardDisplayAnapara').optional({ nullable: true }),
+    body('dashboardDisplayEntryDate').optional({ nullable: true }),
+  ],
+  handleValidationErrors,
+  async (req, res, next) => {
+    try {
+      const data = await investorService.patchInvestorDashboardKpiDisplay(Number(req.params.id), req.body);
+      res.json({ success: true, data });
+    } catch (err) { next(err); }
+  }
+);
+
+// ---------------------------------------------------------------------------
 // GET /api/investors/:id
 // ---------------------------------------------------------------------------
 router.get('/:id',
@@ -81,7 +101,9 @@ router.get('/:id/summary',
   handleValidationErrors,
   async (req, res, next) => {
     try {
-      const data = await summaryService.getInvestorSummary(req.params.id);
+      const data = await summaryService.getInvestorSummary(req.params.id, {
+        investorPortal: req.user?.role === 'investor',
+      });
       res.json({ success: true, data });
     } catch (err) { next(err); }
   }

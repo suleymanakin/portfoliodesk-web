@@ -144,6 +144,52 @@ export async function updateInvestor(id, { name, isActive, commissionRate, billi
   return updated;
 }
 
+/**
+ * Yatırımcı paneli KPI gösterim alanları (DB’de kalıcı).
+ *
+ * NOT: Bu alanlar yalnızca istemcide gösterilir; settlementEngine, calculationEngine,
+ * summaryService, getInvestorSummary veya başka iş mantığında ASLA kullanılmamalıdır.
+ */
+export async function patchInvestorDashboardKpiDisplay(id, patch) {
+  await getInvestorById(id);
+  const data = {};
+
+  if (patch.dashboardDisplayAnapara !== undefined) {
+    if (patch.dashboardDisplayAnapara === null || patch.dashboardDisplayAnapara === '') {
+      data.dashboardDisplayAnapara = null;
+    } else {
+      const d = new Decimal(String(patch.dashboardDisplayAnapara));
+      if (d.isNegative()) {
+        throw Object.assign(new Error('Gösterim ana parası negatif olamaz.'), { status: 422 });
+      }
+      data.dashboardDisplayAnapara = d.toString();
+    }
+  }
+
+  if (patch.dashboardDisplayEntryDate !== undefined) {
+    if (patch.dashboardDisplayEntryDate === null || patch.dashboardDisplayEntryDate === '') {
+      data.dashboardDisplayEntryDate = null;
+    } else {
+      const ds = String(patch.dashboardDisplayEntryDate).slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(ds)) {
+        throw Object.assign(new Error('Giriş tarihi YYYY-MM-DD olmalıdır.'), { status: 422 });
+      }
+      const d = new Date();
+      const todayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      if (ds > todayStr) {
+        throw Object.assign(new Error('Gösterim giriş tarihi gelecekte olamaz.'), { status: 422 });
+      }
+      data.dashboardDisplayEntryDate = new Date(ds);
+    }
+  }
+
+  if (Object.keys(data).length === 0) {
+    return getInvestorById(id);
+  }
+
+  return prisma.investor.update({ where: { id: Number(id) }, data });
+}
+
 // ---------------------------------------------------------------------------
 // Delete
 // ---------------------------------------------------------------------------

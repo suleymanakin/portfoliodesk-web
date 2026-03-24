@@ -39,7 +39,8 @@ router.get('/investors/:id/series',
   handleValidationErrors,
   async (req, res, next) => {
     try {
-      const data = await reportService.getInvestorDailySeries(req.params.id);
+      const investorPortal = req.user?.role === 'investor';
+      const data = await reportService.getInvestorDailySeries(req.params.id, { investorPortal });
       res.json({ success: true, data });
     } catch (err) { next(err); }
   }
@@ -54,7 +55,8 @@ router.get('/investors/:id/monthly',
   handleValidationErrors,
   async (req, res, next) => {
     try {
-      const data = await reportService.getInvestorMonthlyPerformance(Number(req.params.id));
+      const settledOnly = req.user?.role === 'investor';
+      const data = await reportService.getInvestorMonthlyPerformance(Number(req.params.id), { settledOnly });
       res.json({ success: true, data });
     } catch (err) { next(err); }
   }

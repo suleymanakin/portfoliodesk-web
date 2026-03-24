@@ -6,7 +6,11 @@
 import Decimal from 'decimal.js';
 import prisma from '../lib/prisma.js';
 import { getMonthlySummary } from '../engine/calculationEngine.js';
-import { getSettlementsForInvestor, getCurrentEstimatedCommission } from './settlementService.js';
+import {
+  getSettlementsForInvestor,
+  getCurrentEstimatedCommission,
+  getLastSettledPeriodEnd,
+} from './settlementService.js';
 
 const ONE = new Decimal('1');
 const HUNDRED = new Decimal('100');
@@ -202,9 +206,18 @@ export async function getYearlySummary(year) {
 // Yatırımcı bazlı seriler
 // ---------------------------------------------------------------------------
 
-export async function getInvestorDailySeries(investorId) {
+export async function getInvestorDailySeries(investorId, opts = {}) {
+  const { investorPortal = false } = opts;
+  const where = { investorId: Number(investorId) };
+  if (investorPortal) {
+    const endCap = await getLastSettledPeriodEnd(investorId);
+    if (!endCap) {
+      return [];
+    }
+    where.date = { lte: endCap };
+  }
   const history = await prisma.investorHistory.findMany({
-    where: { investorId: Number(investorId) },
+    where,
     orderBy: { date: 'asc' },
     select: { date: true, capitalAfter: true, dailyProfit: true },
   });
@@ -215,9 +228,12 @@ export async function getInvestorDailySeries(investorId) {
   }));
 }
 
-export async function getInvestorMonthlyPerformance(investorId) {
-  // Mevcut dönem taslağını günlük girişlere göre güncelle (Hesap Kesimi sayfasına girmeden de güncel komisyon/kâr görünsün)
-  const settlements = await getSettlementsForInvestor(investorId, { includeCurrentDraft: true });
+export async function getInvestorMonthlyPerformance(investorId, opts = {}) {
+  const settledOnly = opts.settledOnly === true;
+  const settlements = await getSettlementsForInvestor(investorId, {
+    includeCurrentDraft: !settledOnly,
+    settledOnly,
+  });
   return settlements.map((s) => ({
     year: s.year,
     month: s.month,

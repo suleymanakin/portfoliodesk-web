@@ -8,6 +8,9 @@
  *   net_kâr = dönem_kârı + carry_forward_loss (negatif)
  *   net_kâr > 0 → komisyon = net_kâr × oran/100
  *   net_kâr ≤ 0 → komisyon = 0, zarar sonraki döneme devredilir
+ *
+ * UYARI: Investor.dashboardDisplayAnapara / dashboardDisplayEntryDate yalnızca
+ * yatırımcı paneli gösterimidir; bu motor ve calculateSettlement içinde ASLA kullanılmaz.
  */
 
 import Decimal from 'decimal.js';

@@ -14,11 +14,7 @@ async function ensureMigrations() {
   _migrationsPromise = new Promise((resolve, reject) => {
     const cwd = process.cwd();
     const prismaBin = `${cwd}/node_modules/.bin/prisma`;
-    const args = [
-      'migrate',
-      'deploy',
-      '--schema=backend/prisma/schema.prisma',
-    ];
+    const args = ['migrate', 'deploy', '--schema=backend/prisma/schema.prisma'];
 
     execFile(
       prismaBin,
@@ -26,12 +22,11 @@ async function ensureMigrations() {
       {
         cwd,
         env: process.env,
-        timeout: 10 * 60 * 1000, // migrations bazen uzun sürebilir
+        timeout: 10 * 60 * 1000,
       },
       (err, stdout, stderr) => {
         if (stdout) console.log(stdout);
         if (stderr) console.log(stderr);
-
         if (err) return reject(err);
         _migrationsEnsured = true;
         resolve();
@@ -56,9 +51,15 @@ export default async function handler(req, res) {
   });
 
   try {
-    // Vercel'de DB şeması migrations olmadan eski kalabiliyor.
-    // First cold start'ta otomatik migrations çalıştırıp schema'yı güncelliyoruz.
-    await ensureMigrations();
+    // Schema kolonu eksikleri (örn. prod DB migration'ı uygulanmadıysa) oluşmasın diye
+    // cold start'ta tek sefer migration çalıştırmayı deniyoruz.
+    // Not: Vercel environment'da prisma wasm eksik kalırsa ENOENT verebiliyor;
+    // bu durumda API'yi çalışır durumda tutmak için hatayı bastırıyoruz.
+    try {
+      await ensureMigrations();
+    } catch (e) {
+      console.warn('[migrations] skip:', e?.message || String(e));
+    }
 
     const { default: app } = await import('../backend/src/app.js');
     app(req, res);

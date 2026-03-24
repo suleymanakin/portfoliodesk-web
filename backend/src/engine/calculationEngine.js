@@ -9,6 +9,9 @@
  *   new_capital = old_capital × (1 + pct / 100)
  *   daily_profit = new_capital − old_capital
  *   cumulative_pct = ∏(1 + pct_i/100) − 1  (×100 gösterim için)
+ *
+ * UYARI: Investor.dashboardDisplayAnapara / dashboardDisplayEntryDate alanları
+ * yalnızca yatırımcı paneli gösterimidir; bu motor ve recalculate akışında ASLA kullanılmaz.
  */
 
 import Decimal from 'decimal.js';

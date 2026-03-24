@@ -28,11 +28,20 @@ export function displayDecimal(value, decimals = 2) {
 }
 
 /**
- * Para birimi ile formatlı: ₺3.254.485,76
+ * Para birimi ile formatlı: ₺3.254.485,76 · negatif -₺5.000,00 · isteğe bağlı pozitif +₺1.000,00
+ * @param {string|number|null|undefined} value
+ * @param {{ showPlus?: boolean }} [options] — true iken pozitif tutarlarda +₺ öneki
  */
-export function displayMoney(value) {
+export function displayMoney(value, options = {}) {
   if (value === null || value === undefined) return '—';
-  return `₺${displayDecimal(value)}`;
+  const num = parseFloat(String(value));
+  if (isNaN(num)) return '—';
+  const showPlus = options.showPlus === true;
+  const body = displayDecimal(Math.abs(num));
+  if (body === '—') return '—';
+  if (num < 0) return `-₺${body}`;
+  if (num > 0 && showPlus) return `+₺${body}`;
+  return `₺${body}`;
 }
 
 /**

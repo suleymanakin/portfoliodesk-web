@@ -142,6 +142,7 @@
 .inv-banner-big-stat { text-align: right; position: relative; z-index: 2; }
 .inv-banner-stat-label { font-size: 0.72rem; color: rgba(255, 255, 255, 0.5); text-transform: uppercase; letter-spacing: 0.5px; }
 .inv-banner-stat-val { font-size: 1.8rem; font-weight: 800; color: var(--clr-on-accent); line-height: 1.2; }
+.inv-banner-stat-micro { font-size: 0.68rem; margin-top: 0.15rem; color: rgba(255, 255, 255, 0.45); line-height: 1.3; }
 .inv-banner-stat-delta { font-size: 0.8rem; font-weight: 600; margin-top: 0.2rem; }
 .inv-delta-pos { color: var(--clr-success); }
 .inv-delta-neg { color: var(--clr-danger); }
@@ -170,18 +171,13 @@
 }
 .inv-banner-bg-emoji .bi { font-size: 1em; }
 
-/* ── STAT CARDS ── */
+/* ── STAT CARDS (her zaman tek satır — 5 kart) ── */
 .inv-stats-row {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 1rem;
   margin-bottom: 1.5rem;
-}
-@media (max-width: 900px) {
-  .inv-stats-row { grid-template-columns: repeat(2, 1fr); }
-}
-@media (max-width: 500px) {
-  .inv-stats-row { grid-template-columns: 1fr; }
+  width: 100%;
 }
 .inv-stat-card {
   background: var(--clr-surface);
@@ -191,6 +187,7 @@
   transition: var(--transition);
   position: relative;
   overflow: hidden;
+  min-width: 0;
 }
 .inv-stat-card:hover {
   border-color: var(--clr-border-light);
@@ -220,15 +217,45 @@
   text-transform: uppercase;
   letter-spacing: 0.4px;
 }
+.inv-stat-label-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex: 1;
+  min-width: 0;
+}
+.inv-stat-edit-btn {
+  flex-shrink: 0;
+  padding: 0.15rem 0.35rem !important;
+  line-height: 1;
+  color: var(--clr-text-muted);
+}
+.inv-stat-edit-btn:hover {
+  color: var(--clr-accent);
+}
+.inv-stat-edit-btn .bi {
+  font-size: 0.85rem;
+}
 .inv-stat-value {
-  font-size: 1.5rem;
+  font-size: clamp(0.8rem, 2.2vw, 1.5rem);
   font-weight: 800;
   color: var(--clr-text-primary);
   letter-spacing: -0.5px;
   line-height: 1.1;
+  word-break: break-word;
 }
 .inv-stat-delta { font-size: 0.75rem; font-weight: 600; margin-top: 0.3rem; }
-.inv-stat-sub { font-size: 0.7rem; color: var(--clr-text-muted); margin-top: 0.4rem; }
+.inv-stat-sub { font-size: 0.7rem; color: var(--clr-text-muted); margin-top: 0.4rem; word-break: break-word; }
+
+@media (max-width: 900px) {
+  .inv-stats-row { gap: 0.5rem; }
+  .inv-stat-card { padding: 0.85rem 0.55rem; }
+  .inv-stat-header { gap: 0.35rem; margin-bottom: 0.55rem; }
+  .inv-stat-icon { width: 28px; height: 28px; font-size: 0.85rem; }
+  .inv-stat-label { font-size: 0.58rem; letter-spacing: 0.2px; }
+  .inv-stat-sub { font-size: 0.6rem; margin-top: 0.3rem; }
+  .inv-stat-delta { font-size: 0.65rem; }
+}
 
 /* Stat card accent (üst border) — JS ile .inv-stat-card--accent-* eklenebilir */
 .inv-stat-card[data-accent] { border-top-width: 3px; }
@@ -259,9 +286,36 @@
 /* ── CHART CARD ── */
 .inv-chart-card { display: flex; flex-direction: column; }
 .inv-chart-wrap { flex: 1; padding-top: 0.75rem; min-height: 280px; }
-.inv-chart-legend { display: flex; align-items: center; gap: 0.4rem; }
+.inv-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  max-width: 100%;
+}
 .inv-legend-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--clr-accent); }
 .inv-chart-legend .inv-legend-label { font-size: 0.75rem; color: var(--clr-text-secondary); }
+.inv-chart-cap-hint {
+  flex: 1 1 100%;
+  font-size: 0.7rem;
+  line-height: 1.35;
+  margin-top: 0.1rem;
+}
+.inv-table-card .inv-card-header-row {
+  flex-wrap: wrap;
+  align-items: baseline;
+}
+.inv-table-cap-hint {
+  flex-basis: 100%;
+  font-size: 0.7rem;
+  line-height: 1.35;
+  margin-top: 0.15rem;
+}
+.inv-perf-cap-note {
+  font-size: 0.72rem;
+  line-height: 1.35;
+  margin-bottom: 0.5rem;
+}
 .inv-card-icon {
   width: 30px;
   height: 30px;

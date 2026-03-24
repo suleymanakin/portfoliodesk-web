@@ -58,6 +58,12 @@ model Investor {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
+  // --- Yatırımcı paneli KPI gösterimi (kalıcı). Hesaplamada KULLANILMAZ. ---
+  // settlementEngine, calculationEngine, summaryService ve diğer iş mantığı
+  // bu alanları okumamalı; yalnızca frontend / rapor gösterimi içindir.
+  dashboardDisplayAnapara   Decimal?  @map("dashboard_display_anapara") @db.Decimal(20, 10)
+  dashboardDisplayEntryDate DateTime? @map("dashboard_display_entry_date") @db.Date
+
   user        User?
   history     InvestorHistory[]
   settlements MonthlySettlement[]

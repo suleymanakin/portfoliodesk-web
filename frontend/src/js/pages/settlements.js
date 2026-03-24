@@ -652,7 +652,9 @@ function bindEvents(investors) {
   // default: settlements first
   setTab('settlements');
 
-  document.getElementById('addMovementBtn')?.addEventListener('click', () => openMovementModal());
+  document.getElementById('addMovementBtn')?.addEventListener('click', () => {
+    openMovementModal().catch((e) => showToast(e?.message || 'Hata oluştu', 'error'));
+  });
 
   document.getElementById('yearSel')?.addEventListener('change', (e) => {
     year = e.target.value;
@@ -668,17 +670,26 @@ function bindEvents(investors) {
   });
 }
 
-function openMovementModal() {
-  const investorOptions = (_settlementsInvestors || [])
-    .map((inv) => `<option value="${escapeHtml(inv.id)}">${escapeHtml(inv.name)}</option>`)
-    .join('');
+async function openMovementModal() {
+  // Modal açılmadan önce yatırımcı listesini taze tutmak için (bazı durumlarda AppState boş kalabiliyor).
+  let invList = (_settlementsInvestors || []);
+  if (!invList.length) {
+    invList = await investorApi.getAll();
+  }
+
+  const hasInvestors = Array.isArray(invList) && invList.length > 0;
+  const investorOptions = hasInvestors
+    ? invList
+      .map((inv, idx) => `<option value="${escapeHtml(String(inv.id))}"${idx === 0 ? ' selected' : ''}>${escapeHtml(String(inv.name))}</option>`)
+      .join('')
+    : '';
   openModal({
     title: 'Yeni Ana Para Hareketi',
     body: `
       <div class="form-group">
         <label class="form-label">Yatırımcı</label>
         <select id="mvInvestorId" class="form-control" required>
-          <option value="">Seçiniz…</option>
+          ${hasInvestors ? `<option value="" disabled>Seçiniz…</option>` : `<option value="">Seçiniz…</option>`}
           ${investorOptions}
         </select>
       </div>
@@ -710,7 +721,10 @@ function openMovementModal() {
       const type = document.getElementById('mvType')?.value;
       const amount = document.getElementById('mvAmount')?.value;
       const note = document.getElementById('mvNote')?.value?.trim() || undefined;
-      if (!investorId) throw new Error('Yatırımcı zorunludur');
+      if (!investorId) {
+        showToast('Lütfen bir yatırımcı seçin.', 'error');
+        throw new Error('Yatırımcı zorunludur');
+      }
       if (!date) throw new Error('Tarih zorunludur');
       if (!amount || Number(amount) <= 0) throw new Error('Tutar sıfırdan büyük olmalıdır');
       await investorApi.addMovement(investorId, { date, type, amount, note });

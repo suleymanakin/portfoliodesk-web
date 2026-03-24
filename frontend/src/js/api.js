@@ -73,6 +73,7 @@ async function request(path, options = {}) {
 const get    = (path, opts = {}) => request(path, { method: 'GET', cache: 'no-store', ...opts });
 const post   = (path, body, opts = {}) => request(path, { method: 'POST',   body: JSON.stringify(body), ...opts });
 const put    = (path, body, opts = {}) => request(path, { method: 'PUT',    body: JSON.stringify(body), ...opts });
+const patch  = (path, body, opts = {}) => request(path, { method: 'PATCH',  body: JSON.stringify(body), ...opts });
 const del    = (path, opts = {}) => request(path, { method: 'DELETE', ...opts });
 
 // ---------------------------------------------------------------------------
@@ -96,10 +97,16 @@ export const userApi = {
 // ---------------------------------------------------------------------------
 // Investors
 // ---------------------------------------------------------------------------
-// Investors API sadece okuma. Ekleme/düzenleme Admin Panel (userApi) üzerinden.
+// Okuma herkes (kapsam); KPI gösterim patch yalnız admin (sunucu kontrolü).
+/** Yatırımcı paneli KPI gösterim alanları (PATCH). Doğrudan import da kullanılabilir. */
+export function patchInvestorKpiDisplay(id, body) {
+  return patch(`/investors/${Number(id)}/kpi-display`, body);
+}
+
 export const investorApi = {
   getAll:       ()             => get('/investors'),
   getById:      (id)           => get(`/investors/${id}`),
+  patchKpiDisplay: (id, body)  => patchInvestorKpiDisplay(id, body),
   summary:      (id)           => get(`/investors/${id}/summary`),
   getHistory:   (id)           => get(`/investors/${id}/history`),
   movements:    (id)           => (id ? get(`/investors/${id}/movements`) : get('/investors/movements-all')),

@@ -252,14 +252,17 @@ export async function unsettleMonth(investorId, year, month) {
 // ---------------------------------------------------------------------------
 
 export async function getSettlementsForInvestor(investorId, opts = {}) {
-  const { includeCurrentDraft = false } = opts;
+  const { includeCurrentDraft = false, settledOnly = false } = opts;
+
+  const where = { investorId: Number(investorId) };
+  if (settledOnly) where.isSettled = true;
 
   const list = await prisma.monthlySettlement.findMany({
-    where: { investorId: Number(investorId) },
+    where,
     orderBy: [{ year: 'asc' }, { month: 'asc' }],
   });
 
-  if (!includeCurrentDraft) return list;
+  if (settledOnly || !includeCurrentDraft) return list;
 
   const investor = await prisma.investor.findUnique({ where: { id: Number(investorId) } });
   const draft = investor ? await getCurrentDraftPreviewForInvestor(investor) : null;
@@ -268,6 +271,30 @@ export async function getSettlementsForInvestor(investorId, opts = {}) {
   // Aynı (year, month) zaten varsa draft ekleme (DB kaydı gerçeği temsil eder)
   const exists = list.some((s) => s.year === draft.year && s.month === draft.month);
   return exists ? list : [...list, draft].sort((a, b) => (a.year - b.year) || (a.month - b.month));
+}
+
+/** Önizleme / yetki kontrolü için tek satır */
+export async function findSettlementRow(investorId, year, month) {
+  return prisma.monthlySettlement.findUnique({
+    where: {
+      investorId_year_month: {
+        investorId: Number(investorId),
+        year: Number(year),
+        month: Number(month),
+      },
+    },
+    select: { id: true, isSettled: true },
+  });
+}
+
+/** Yatırımcı portalında grafik / özet üst sınırı: son kesinleşen dönemin bitişi */
+export async function getLastSettledPeriodEnd(investorId) {
+  const last = await prisma.monthlySettlement.findFirst({
+    where: { investorId: Number(investorId), isSettled: true },
+    orderBy: { periodEnd: 'desc' },
+    select: { periodEnd: true },
+  });
+  return last?.periodEnd ?? null;
 }
 
 export async function getAllSettlements(opts = {}) {

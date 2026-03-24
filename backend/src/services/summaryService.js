@@ -6,11 +6,18 @@
  * netInvested = initialCapital + netMovement
  * totalProfit = sum(InvestorHistory.dailyProfit)
  * growthPct = totalProfit / netInvested * 100
+ *
+ * UYARI: Investor.dashboardDisplayAnapara ve dashboardDisplayEntryDate bu dosyada
+ * ve getInvestorSummary hesaplarında kullanılmaz; yalnızca istemci gösterimi içindir.
  */
 
 import Decimal from 'decimal.js';
 import prisma from '../lib/prisma.js';
-import { getSettlementsForInvestor, getCurrentEstimatedCommission } from './settlementService.js';
+import {
+  getSettlementsForInvestor,
+  getCurrentEstimatedCommission,
+  getLastSettledPeriodEnd,
+} from './settlementService.js';
 
 const ZERO = new Decimal('0');
 const HUNDRED = new Decimal('100');
@@ -34,7 +41,8 @@ function parsePeriodToRange(periodKey) {
   return { key, from, to };
 }
 
-export async function getInvestorSummary(investorId) {
+export async function getInvestorSummary(investorId, options = {}) {
+  const investorPortal = options.investorPortal === true;
   const id = Number(investorId);
   const investor = await prisma.investor.findUnique({ where: { id } });
   if (!investor) throw Object.assign(new Error('Yatırımcı bulunamadı.'), { status: 404 });
@@ -58,12 +66,30 @@ export async function getInvestorSummary(investorId) {
   // UI anapara tanımı: initial + net movements + realizedProfit
   const netInvested = initial.plus(netMovement).plus(realizedProfit);
 
-  // Dönemsel kâr: son kesinleşen dönem sonundan itibaren dailyProfit toplamı
-  const profitAgg = await prisma.investorHistory.aggregate({
-    where: {
+  // Yatırımcı portalı: açık dönem kârı gösterme — sadece son kesinleşen güne kadar
+  let profitHistoryWhere;
+  if (investorPortal) {
+    const lastEnd = await getLastSettledPeriodEnd(id);
+    if (!lastEnd) {
+      profitHistoryWhere = { investorId: id, id: -1 };
+    } else {
+      profitHistoryWhere = {
+        investorId: id,
+        date: {
+          lte: lastEnd,
+          ...(resetDate ? { gt: resetDate } : {}),
+        },
+      };
+    }
+  } else {
+    profitHistoryWhere = {
       investorId: id,
       ...(resetDate ? { date: { gt: resetDate } } : {}),
-    },
+    };
+  }
+
+  const profitAgg = await prisma.investorHistory.aggregate({
+    where: profitHistoryWhere,
     _sum: { dailyProfit: true },
   });
   const totalProfit = new Decimal(profitAgg._sum.dailyProfit?.toString() ?? '0');
@@ -71,38 +97,36 @@ export async function getInvestorSummary(investorId) {
   const growthPct = netInvested.isZero() ? ZERO : totalProfit.div(netInvested).times(HUNDRED);
 
   const last = await prisma.investorHistory.findFirst({
-    where: { investorId: id },
+    where: profitHistoryWhere,
     orderBy: { date: 'desc' },
     select: { date: true, dailyProfit: true, capitalAfter: true },
   });
   const lastDailyProfit = last ? new Decimal(last.dailyProfit.toString()) : ZERO;
 
-  // Settlements: kayıtlı dönemler + (opsiyonel) mevcut dönem tahmini
-  const settlements = await getSettlementsForInvestor(id, { includeCurrentDraft: true });
-  // Toplam komisyon tanımı:
-  // - Kesinleşmiş dönemlerin (isSettled=true) komisyon toplamı
-  // - + mevcut dönem tahmini komisyon (getCurrentEstimatedCommission)
-  // Not: includeCurrentDraft ile dönen __draft satırını ayrıca toplamaya katmıyoruz.
+  const settlements = await getSettlementsForInvestor(id, {
+    includeCurrentDraft: !investorPortal,
+    settledOnly: investorPortal,
+  });
   const settledCommission = settlements
     .filter((s) => Boolean(s.isSettled))
     .reduce((sum, s) => sum.plus(new Decimal(s.commissionAmount.toString())), ZERO);
 
   let estimatedCurrentCommission = ZERO;
-  try {
-    const estimate = await getCurrentEstimatedCommission(id);
-    estimatedCurrentCommission = new Decimal(String(estimate.commissionAmount || '0'));
+  if (!investorPortal) {
+    try {
+      const estimate = await getCurrentEstimatedCommission(id);
+      estimatedCurrentCommission = new Decimal(String(estimate.commissionAmount || '0'));
 
-    // Eğer tahmin edilen dönem zaten kesinleşmişse (isSettled=true),
-    // aynı dönemi hem settledCommission içinde hem estimate olarak saymayalım.
-    const existingForTarget = await prisma.monthlySettlement.findUnique({
-      where: { investorId_year_month: { investorId: id, year: Number(estimate.year), month: Number(estimate.month) } },
-      select: { isSettled: true },
-    });
-    if (existingForTarget?.isSettled) {
+      const existingForTarget = await prisma.monthlySettlement.findUnique({
+        where: { investorId_year_month: { investorId: id, year: Number(estimate.year), month: Number(estimate.month) } },
+        select: { isSettled: true },
+      });
+      if (existingForTarget?.isSettled) {
+        estimatedCurrentCommission = ZERO;
+      }
+    } catch {
       estimatedCurrentCommission = ZERO;
     }
-  } catch {
-    estimatedCurrentCommission = ZERO;
   }
 
   // Dönemsel komisyon: sadece “mevcut dönem tahmini”. Kesinleşince 0 olur.

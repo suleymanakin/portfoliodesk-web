@@ -24,7 +24,11 @@ router.get('/', async (req, res, next) => {
       } else if (req.user?.role !== 'admin') {
         return res.status(403).json({ success: false, error: 'Bu işlem için yetkiniz yok.' });
       }
-      data = await settlementService.getSettlementsForInvestor(Number(investorId), { includeCurrentDraft: true });
+      const invOpts =
+        req.user?.role === 'investor'
+          ? { includeCurrentDraft: false, settledOnly: true }
+          : { includeCurrentDraft: true };
+      data = await settlementService.getSettlementsForInvestor(Number(investorId), invOpts);
     } else {
       // Genel liste admin'e özel
       if (req.user?.role !== 'admin') {
@@ -105,7 +109,19 @@ router.get('/:investorId/:year/:month',
   async (req, res, next) => {
     try {
       const { investorId, year, month } = req.params;
-      const data = await settlementService.calculateSettlementPreview(Number(investorId), Number(year), Number(month));
+      const invId = Number(investorId);
+      const y = Number(year);
+      const m = Number(month);
+      if (req.user?.role === 'investor') {
+        const row = await settlementService.findSettlementRow(invId, y, m);
+        if (!row?.isSettled) {
+          return res.status(403).json({
+            success: false,
+            error: 'Bu dönem henüz kesinleşmedi veya size açık değil.',
+          });
+        }
+      }
+      const data = await settlementService.calculateSettlementPreview(invId, y, m);
       res.json({ success: true, data });
     } catch (err) { next(err); }
   }

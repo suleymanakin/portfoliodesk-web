@@ -56,6 +56,9 @@ export function openModal({ title, body, onConfirm = null, confirm = 'Onayla', c
         await onConfirm();
         closeModal();
       } catch (e) {
+        // Kullanıcı "buton çalışmıyor" diye düşündüğünde hatanın nedenini konsolda
+        // görebilmek için log bırakıyoruz.
+        console.error('[modal] onConfirm error:', e);
         btn.disabled = false;
         btn.textContent = confirm;
       }
