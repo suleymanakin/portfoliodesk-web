@@ -1,6 +1,7 @@
 {
   "version": 2,
   "installCommand": "npm install",
+  "buildCommand": "npx prisma migrate deploy --schema=backend/prisma/schema.prisma",
   "outputDirectory": "frontend",
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api" }

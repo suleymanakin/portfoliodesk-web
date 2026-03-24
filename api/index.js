@@ -3,9 +3,15 @@
  * Yanıt gönderilene kadar Promise döndürür; hata olursa JSON ile döner.
  */
 import { execFile } from 'node:child_process';
+import path from 'node:path';
 
 let _migrationsEnsured = false;
 let _migrationsPromise = null;
+
+/** .bin/prisma bazı ortamlarda execFile ile güvenilir değil; doğrudan node + CLI girişi kullanılır */
+function prismaCliJs(projectRoot) {
+  return path.join(projectRoot, 'node_modules/prisma/build/index.js');
+}
 
 async function ensureMigrations() {
   if (_migrationsEnsured) return;
@@ -13,21 +19,25 @@ async function ensureMigrations() {
 
   _migrationsPromise = new Promise((resolve, reject) => {
     const cwd = process.cwd();
-    const prismaBin = `${cwd}/node_modules/.bin/prisma`;
+    const cli = prismaCliJs(cwd);
     const args = ['migrate', 'deploy', '--schema=backend/prisma/schema.prisma'];
 
     execFile(
-      prismaBin,
-      args,
+      process.execPath,
+      [cli, ...args],
       {
         cwd,
         env: process.env,
         timeout: 10 * 60 * 1000,
+        maxBuffer: 10 * 1024 * 1024,
       },
       (err, stdout, stderr) => {
-        if (stdout) console.log(stdout);
-        if (stderr) console.log(stderr);
-        if (err) return reject(err);
+        if (stdout) console.log('[migrations]', stdout);
+        if (stderr) console.log('[migrations]', stderr);
+        if (err) {
+          console.error('[migrations] migrate deploy failed:', err?.message || err);
+          return reject(err);
+        }
         _migrationsEnsured = true;
         resolve();
       }
