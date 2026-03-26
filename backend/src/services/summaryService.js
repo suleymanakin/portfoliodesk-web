@@ -13,6 +13,7 @@
 
 import Decimal from 'decimal.js';
 import prisma from '../lib/prisma.js';
+import { getProfitPartConsumedByWithdrawCommissions } from '../engine/settlementEngine.js';
 import {
   getSettlementsForInvestor,
   getCurrentEstimatedCommission,
@@ -24,7 +25,8 @@ const HUNDRED = new Decimal('100');
 const ONE = new Decimal('1');
 
 function isCommissionSettlementMovement(note) {
-  return typeof note === 'string' && note.startsWith('commission_settlement:');
+  return typeof note === 'string'
+    && (note.startsWith('commission_settlement:') || note.startsWith('commission_withdraw:'));
 }
 
 function parsePeriodToRange(periodKey) {
@@ -92,7 +94,22 @@ export async function getInvestorSummary(investorId, options = {}) {
     where: profitHistoryWhere,
     _sum: { dailyProfit: true },
   });
-  const totalProfit = new Decimal(profitAgg._sum.dailyProfit?.toString() ?? '0');
+  const totalProfitRaw = new Decimal(profitAgg._sum.dailyProfit?.toString() ?? '0');
+  let consumedProfitPart = ZERO;
+  if (investorPortal) {
+    const lastEnd = await getLastSettledPeriodEnd(id);
+    if (lastEnd) {
+      consumedProfitPart = await getProfitPartConsumedByWithdrawCommissions(prisma, id, {
+        lteDate: lastEnd,
+        ...(resetDate ? { gtDate: resetDate } : {}),
+      });
+    }
+  } else {
+    consumedProfitPart = await getProfitPartConsumedByWithdrawCommissions(prisma, id, {
+      ...(resetDate ? { gtDate: resetDate } : {}),
+    });
+  }
+  const totalProfit = totalProfitRaw.minus(consumedProfitPart);
 
   const growthPct = netInvested.isZero() ? ZERO : totalProfit.div(netInvested).times(HUNDRED);
 

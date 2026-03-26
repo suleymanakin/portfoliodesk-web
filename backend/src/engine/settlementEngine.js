@@ -18,10 +18,28 @@ import Decimal from 'decimal.js';
 const HUNDRED = new Decimal('100');
 const ZERO = new Decimal('0');
 const ONE = new Decimal('1');
+export const COMMISSION_WITHDRAW_NOTE_PREFIX = 'commission_withdraw:';
 
 function toDateOnly(date) {
   const d = date instanceof Date ? date : new Date(date);
   return new Date(d.toISOString().slice(0, 10));
+}
+
+function isCommissionWithdrawNote(note) {
+  return typeof note === 'string' && note.startsWith(COMMISSION_WITHDRAW_NOTE_PREFIX);
+}
+
+function parseCommissionWithdrawProfitPart(note) {
+  if (!isCommissionWithdrawNote(note)) return null;
+  // note format: commission_withdraw:<baseMovementId>:profitPart=<decimal>:rate=<decimal>
+  const m = note.match(/:profitPart=([-+]?\d+(?:\.\d+)?)/);
+  if (!m) return null;
+  try {
+    const d = new Decimal(m[1]);
+    return d.isFinite() ? d : null;
+  } catch {
+    return null;
+  }
 }
 
 async function netMovementsBetween(prisma, investorId, opts) {
@@ -44,6 +62,91 @@ async function netMovementsBetween(prisma, investorId, opts) {
     const amt = new Decimal(mv.amount.toString());
     return mv.type === 'withdraw' ? sum.minus(amt) : sum.plus(amt);
   }, ZERO);
+}
+
+export async function getProfitPartConsumedByWithdrawCommissions(prisma, investorId, opts = {}) {
+  const { gtDate = null, gteDate = null, ltDate = null, lteDate = null } = opts || {};
+  const where = {
+    investorId,
+    type: 'withdraw',
+    note: { startsWith: COMMISSION_WITHDRAW_NOTE_PREFIX },
+  };
+  if (gtDate || gteDate || ltDate || lteDate) {
+    where.date = {};
+    if (gtDate) where.date.gt = toDateOnly(gtDate);
+    if (gteDate) where.date.gte = toDateOnly(gteDate);
+    if (ltDate) where.date.lt = toDateOnly(ltDate);
+    if (lteDate) where.date.lte = toDateOnly(lteDate);
+  }
+
+  const moves = await prisma.capitalMovement.findMany({
+    where,
+    select: { note: true },
+  });
+
+  return moves.reduce((sum, mv) => {
+    const pp = parseCommissionWithdrawProfitPart(mv.note);
+    return pp ? sum.plus(pp) : sum;
+  }, ZERO);
+}
+
+export async function getAvailableProfitAtDate(prisma, investorId, targetDate) {
+  const inv = await prisma.investor.findUnique({
+    where: { id: Number(investorId) },
+    select: { id: true, profitResetDate: true },
+  });
+  if (!inv) throw Object.assign(new Error(`Yatırımcı bulunamadı: ${investorId}`), { status: 404 });
+
+  const td = toDateOnly(targetDate);
+  const where = {
+    investorId: Number(investorId),
+    date: {
+      lte: td,
+      ...(inv.profitResetDate ? { gt: toDateOnly(inv.profitResetDate) } : {}),
+    },
+  };
+  const agg = await prisma.investorHistory.aggregate({
+    where,
+    _sum: { dailyProfit: true },
+  });
+  const rawProfit = new Decimal(agg._sum.dailyProfit?.toString() ?? '0');
+
+  const consumed = await getProfitPartConsumedByWithdrawCommissions(prisma, Number(investorId), {
+    lteDate: td,
+    ...(inv.profitResetDate ? { gtDate: toDateOnly(inv.profitResetDate) } : {}),
+  });
+
+  const available = rawProfit.minus(consumed);
+  return available.greaterThan(ZERO) ? available : ZERO;
+}
+
+export async function calculateWithdrawCommissionSplit(prisma, investorId, withdrawAmount, targetDate = new Date()) {
+  const inv = await prisma.investor.findUnique({
+    where: { id: Number(investorId) },
+    select: { id: true, commissionRate: true },
+  });
+  if (!inv) throw Object.assign(new Error(`Yatırımcı bulunamadı: ${investorId}`), { status: 404 });
+
+  const amount = new Decimal(String(withdrawAmount ?? '0'));
+  if (!amount.isFinite() || amount.lessThanOrEqualTo(ZERO)) {
+    throw Object.assign(new Error('Çekim tutarı sıfırdan büyük olmalıdır.'), { status: 422 });
+  }
+
+  const availableProfit = await getAvailableProfitAtDate(prisma, Number(investorId), targetDate);
+  const profitPart = Decimal.min(amount, availableProfit);
+  const principalPart = amount.minus(profitPart);
+  const rate = inv.commissionRate ? new Decimal(inv.commissionRate.toString()) : ZERO;
+  const commissionAtWithdraw = profitPart.greaterThan(ZERO) && rate.greaterThan(ZERO)
+    ? profitPart.times(rate).div(HUNDRED)
+    : ZERO;
+
+  return {
+    availableProfit: availableProfit.toString(),
+    profitPart: profitPart.toString(),
+    principalPart: principalPart.toString(),
+    commissionRate: rate.toString(),
+    commissionAtWithdraw: commissionAtWithdraw.toString(),
+  };
 }
 
 // ---------------------------------------------------------------------------

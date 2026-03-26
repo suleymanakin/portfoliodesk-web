@@ -6,6 +6,10 @@ import Decimal from 'decimal.js';
 import prisma from '../lib/prisma.js';
 import { recalculateFromDate } from '../engine/calculationEngine.js';
 import {
+  calculateWithdrawCommissionSplit,
+  COMMISSION_WITHDRAW_NOTE_PREFIX,
+} from '../engine/settlementEngine.js';
+import {
   assertNoSettledPeriodOverlapsInvestorDate,
   refreshUnsettledSettlementsForInvestorAtDate,
 } from './settlementService.js';
@@ -16,6 +20,11 @@ function normDate(dateStr) {
   const d = new Date(String(dateStr).slice(0, 10));
   if (Number.isNaN(d.getTime())) throw Object.assign(new Error('Geçerli bir tarih giriniz (YYYY-MM-DD).'), { status: 422 });
   return d;
+}
+
+function isSystemCommissionNote(note) {
+  return typeof note === 'string'
+    && (note.startsWith('commission_settlement:') || note.startsWith(COMMISSION_WITHDRAW_NOTE_PREFIX));
 }
 
 export async function listMovements(investorId) {
@@ -51,14 +60,34 @@ export async function addMovement(investorId, body) {
 
   await assertNoSettledPeriodOverlapsInvestorDate(Number(investorId), date);
 
-  const created = await prisma.capitalMovement.create({
-    data: {
-      investorId: Number(investorId),
-      date,
-      type,
-      amount: amount.toString(),
-      note,
-    },
+  const created = await prisma.$transaction(async (tx) => {
+    const base = await tx.capitalMovement.create({
+      data: {
+        investorId: Number(investorId),
+        date,
+        type,
+        amount: amount.toString(),
+        note,
+      },
+    });
+
+    if (type === 'withdraw') {
+      const split = await calculateWithdrawCommissionSplit(tx, Number(investorId), amount.toString(), date);
+      const commission = new Decimal(split.commissionAtWithdraw);
+      if (commission.greaterThan(ZERO)) {
+        await tx.capitalMovement.create({
+          data: {
+            investorId: Number(investorId),
+            date,
+            type: 'withdraw',
+            amount: commission.toString(),
+            note: `${COMMISSION_WITHDRAW_NOTE_PREFIX}${base.id}:profitPart=${split.profitPart}:rate=${split.commissionRate}`,
+          },
+        });
+      }
+    }
+
+    return base;
   });
 
   // Bu tarihten itibaren tüm günlük sonuçları yeniden hesapla
@@ -74,6 +103,9 @@ export async function updateMovement(investorId, movementId, body) {
   });
   if (!movement || movement.investorId !== Number(investorId)) {
     throw Object.assign(new Error('Hareket bulunamadı.'), { status: 404 });
+  }
+  if (isSystemCommissionNote(movement.note)) {
+    throw Object.assign(new Error('Sistem tarafından üretilen komisyon hareketi düzenlenemez.'), { status: 422 });
   }
 
   const type = body?.type;
@@ -97,14 +129,43 @@ export async function updateMovement(investorId, movementId, body) {
   const newDateStr = date.toISOString().slice(0, 10);
   const startDate = originalDateStr < newDateStr ? originalDateStr : newDateStr;
 
-  const updated = await prisma.capitalMovement.update({
-    where: { id: movement.id },
-    data: {
-      date,
-      type,
-      amount: amount.toString(),
-      note,
-    },
+  const updated = await prisma.$transaction(async (tx) => {
+    const base = await tx.capitalMovement.update({
+      where: { id: movement.id },
+      data: {
+        date,
+        type,
+        amount: amount.toString(),
+        note,
+      },
+    });
+
+    // Eski linked withdraw komisyon hareketlerini temizle.
+    await tx.capitalMovement.deleteMany({
+      where: {
+        investorId: Number(investorId),
+        type: 'withdraw',
+        note: { startsWith: `${COMMISSION_WITHDRAW_NOTE_PREFIX}${base.id}:` },
+      },
+    });
+
+    if (type === 'withdraw') {
+      const split = await calculateWithdrawCommissionSplit(tx, Number(investorId), amount.toString(), date);
+      const commission = new Decimal(split.commissionAtWithdraw);
+      if (commission.greaterThan(ZERO)) {
+        await tx.capitalMovement.create({
+          data: {
+            investorId: Number(investorId),
+            date,
+            type: 'withdraw',
+            amount: commission.toString(),
+            note: `${COMMISSION_WITHDRAW_NOTE_PREFIX}${base.id}:profitPart=${split.profitPart}:rate=${split.commissionRate}`,
+          },
+        });
+      }
+    }
+
+    return base;
   });
 
   await recalculateFromDate(prisma, startDate);
@@ -120,13 +181,25 @@ export async function deleteMovement(investorId, movementId) {
   if (!movement || movement.investorId !== Number(investorId)) {
     throw Object.assign(new Error('Hareket bulunamadı.'), { status: 404 });
   }
+  if (isSystemCommissionNote(movement.note)) {
+    throw Object.assign(new Error('Sistem tarafından üretilen komisyon hareketi silinemez.'), { status: 422 });
+  }
 
   const dateStr = movement.date.toISOString().slice(0, 10);
 
   await assertNoSettledPeriodOverlapsInvestorDate(Number(investorId), movement.date);
 
-  await prisma.capitalMovement.delete({
-    where: { id: movement.id },
+  await prisma.$transaction(async (tx) => {
+    await tx.capitalMovement.deleteMany({
+      where: {
+        investorId: Number(investorId),
+        type: 'withdraw',
+        note: { startsWith: `${COMMISSION_WITHDRAW_NOTE_PREFIX}${movement.id}:` },
+      },
+    });
+    await tx.capitalMovement.delete({
+      where: { id: movement.id },
+    });
   });
 
   await recalculateFromDate(prisma, dateStr);

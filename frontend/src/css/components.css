@@ -933,6 +933,16 @@
   text-align: left;
 }
 
+/* Transactions table: keep table-level scroll, wrap long detail text in-cell */
+.tx-detail-content {
+  display: block;
+  max-width: 420px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.35;
+}
+
 /* =========================================================
    UPCOMING ALERTS (Dashboard)
    ========================================================= */

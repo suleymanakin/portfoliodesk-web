@@ -4,11 +4,97 @@
  */
 
 import prisma from '../lib/prisma.js';
-import { calculateSettlement, getBillingPeriod } from '../engine/settlementEngine.js';
+import {
+  calculateSettlement,
+  COMMISSION_WITHDRAW_NOTE_PREFIX,
+  getBillingPeriod,
+} from '../engine/settlementEngine.js';
 import Decimal from 'decimal.js';
 import { recalculateFromDate } from '../engine/calculationEngine.js';
 
 const ZERO = new Decimal('0');
+
+async function sumPaidWithdrawCommissionsInPeriod(db, investorId, periodStart, periodEnd) {
+  const agg = await db.capitalMovement.aggregate({
+    where: {
+      investorId: Number(investorId),
+      type: 'withdraw',
+      note: { startsWith: COMMISSION_WITHDRAW_NOTE_PREFIX },
+      date: {
+        gte: periodStart,
+        lte: periodEnd,
+      },
+    },
+    _sum: { amount: true },
+  });
+  return new Decimal(agg._sum.amount?.toString() ?? '0');
+}
+
+function parseProfitPartFromCommissionWithdrawNote(note) {
+  if (typeof note !== 'string' || !note.startsWith(COMMISSION_WITHDRAW_NOTE_PREFIX)) return null;
+  const m = note.match(/:profitPart=([-+]?\d+(?:\.\d+)?)/);
+  if (!m) return null;
+  try {
+    const d = new Decimal(m[1]);
+    return d.isFinite() ? d : null;
+  } catch {
+    return null;
+  }
+}
+
+async function sumConsumedProfitPartInPeriod(db, investorId, periodStart, periodEnd) {
+  const rows = await db.capitalMovement.findMany({
+    where: {
+      investorId: Number(investorId),
+      type: 'withdraw',
+      note: { startsWith: COMMISSION_WITHDRAW_NOTE_PREFIX },
+      date: {
+        gte: periodStart,
+        lte: periodEnd,
+      },
+    },
+    select: { note: true },
+  });
+  return rows.reduce((sum, r) => {
+    const pp = parseProfitPartFromCommissionWithdrawNote(r.note);
+    return pp ? sum.plus(pp) : sum;
+  }, ZERO);
+}
+
+function toPlainNumberString(value) {
+  return new Decimal(value?.toString?.() ?? value ?? '0').toString();
+}
+
+async function normalizeSettlementCommissionForDisplay(db, row) {
+  if (!row || row.isSettled) return row;
+  const gross = new Decimal(row.commissionAmount?.toString?.() ?? row.commissionAmount ?? '0');
+  const grossProfit = new Decimal(row.monthlyProfit?.toString?.() ?? row.monthlyProfit ?? '0');
+  const paidDuringWithdraw = await sumPaidWithdrawCommissionsInPeriod(
+    db,
+    row.investorId,
+    row.periodStart,
+    row.periodEnd
+  );
+  const consumedProfitPart = await sumConsumedProfitPartInPeriod(
+    db,
+    row.investorId,
+    row.periodStart,
+    row.periodEnd
+  );
+  const remainingProfit = grossProfit.greaterThan(ZERO)
+    ? Decimal.max(ZERO, grossProfit.minus(consumedProfitPart))
+    : grossProfit;
+  const remaining = Decimal.max(ZERO, gross.minus(paidDuringWithdraw));
+  return {
+    ...row,
+    monthlyProfit: toPlainNumberString(remainingProfit),
+    monthlyProfitGross: toPlainNumberString(grossProfit),
+    profitConsumedByWithdraw: toPlainNumberString(consumedProfitPart),
+    commissionAmount: toPlainNumberString(remaining),
+    commissionGrossAmount: toPlainNumberString(gross),
+    commissionPaidDuringWithdraw: toPlainNumberString(paidDuringWithdraw),
+  };
+}
 
 function getCurrentPeriodTarget(today, billingDay) {
   const year = today.getFullYear();
@@ -31,6 +117,26 @@ async function getCurrentDraftPreviewForInvestor(investor) {
   if (!investor || !investor.isActive) return null;
   const target = getCurrentPeriodTarget(new Date(), investor.billingDay);
   const data = await calculateSettlement(prisma, investor.id, target.year, target.month);
+  const paidDuringWithdraw = await sumPaidWithdrawCommissionsInPeriod(
+    prisma,
+    investor.id,
+    data.periodStart,
+    data.periodEnd
+  );
+  const consumedProfitPart = await sumConsumedProfitPartInPeriod(
+    prisma,
+    investor.id,
+    data.periodStart,
+    data.periodEnd
+  );
+  const grossProfit = new Decimal(data.monthlyProfit);
+  const remainingProfit = grossProfit.greaterThan(ZERO)
+    ? Decimal.max(ZERO, grossProfit.minus(consumedProfitPart))
+    : grossProfit;
+  const remainingCommission = Decimal.max(
+    ZERO,
+    new Decimal(data.commissionAmount).minus(paidDuringWithdraw)
+  );
   return {
     id: null,
     investorId: investor.id,
@@ -40,8 +146,12 @@ async function getCurrentDraftPreviewForInvestor(investor) {
     periodEnd: data.periodEnd,
     capitalStart: data.capitalStart,
     capitalEnd: data.capitalEnd,
-    monthlyProfit: data.monthlyProfit,
-    commissionAmount: data.commissionAmount,
+    monthlyProfit: remainingProfit.toString(),
+    monthlyProfitGross: data.monthlyProfit,
+    profitConsumedByWithdraw: consumedProfitPart.toString(),
+    commissionAmount: remainingCommission.toString(),
+    commissionGrossAmount: data.commissionAmount,
+    commissionPaidDuringWithdraw: paidDuringWithdraw.toString(),
     isSettled: false,
     carryForwardLoss: data.newCarryForwardLoss,
     createdAt: new Date(),
@@ -55,12 +165,39 @@ async function getCurrentDraftPreviewForInvestor(investor) {
 // createOrUpdateSettlement
 // ---------------------------------------------------------------------------
 
+/** Pasife alınırken veya temizlikte: kesinleşmemiş hesap kesimi satırlarını siler */
+export async function deleteUnsettledSettlementsForInvestor(investorId) {
+  await prisma.monthlySettlement.deleteMany({
+    where: { investorId: Number(investorId), isSettled: false },
+  });
+}
+
 export async function createOrUpdateSettlement(investorId, year, month) {
-  const data = await calculateSettlement(prisma, investorId, year, month);
+  const id = Number(investorId);
+  const y = Number(year);
+  const m = Number(month);
+
+  const inv = await prisma.investor.findUnique({
+    where: { id },
+    select: { id: true, isActive: true },
+  });
+  if (!inv) throw Object.assign(new Error('Yatırımcı bulunamadı.'), { status: 404 });
 
   const existing = await prisma.monthlySettlement.findUnique({
-    where: { investorId_year_month: { investorId, year, month } },
+    where: { investorId_year_month: { investorId: id, year: y, month: m } },
   });
+
+  if (!inv.isActive) {
+    if (existing && !existing.isSettled) {
+      await prisma.monthlySettlement.delete({ where: { id: existing.id } });
+    }
+    if (existing?.isSettled) {
+      return prisma.monthlySettlement.findUnique({ where: { id: existing.id } });
+    }
+    return null;
+  }
+
+  const data = await calculateSettlement(prisma, id, y, m);
 
   if (existing) {
     return prisma.monthlySettlement.update({
@@ -79,9 +216,9 @@ export async function createOrUpdateSettlement(investorId, year, month) {
 
   return prisma.monthlySettlement.create({
     data: {
-      investorId,
-      year,
-      month,
+      investorId: id,
+      year: y,
+      month: m,
       periodStart: data.periodStart,
       periodEnd: data.periodEnd,
       capitalStart: data.capitalStart,
@@ -105,6 +242,11 @@ export async function settleMonth(investorId, year, month) {
       where: { investorId_year_month: { investorId, year, month } },
     });
     if (!settlement) settlement = await createOrUpdateSettlement(investorId, year, month);
+    if (!settlement) {
+      throw Object.assign(new Error('Pasif yatırımcı için hesap kesimi oluşturulamaz. Önce yatırımcıyı aktifleştirin.'), {
+        status: 422,
+      });
+    }
 
     // Idempotent: zaten kesinleşmişse ikinci kez “kârı anaparaya ekleme” yapma.
     if (settlement.isSettled) return settlement;
@@ -116,14 +258,21 @@ export async function settleMonth(investorId, year, month) {
 
     // Dönem kapanışı:
     // - Kâr: komisyon düşülmüş net kâr (monthlyProfit - commissionAmount) anaparaya eklenmiş sayılır.
-    // - Komisyon: sermayeden düşülür (bir sonraki günden itibaren etkili olacak şekilde withdraw movement).
+    // - Komisyon: withdraw anlarında önceden tahsil edilenler düşülür, kalan tutar settlement'ta kesilir.
     const profit = new Decimal(updatedSettlement.monthlyProfit.toString());
-    const commission = new Decimal(updatedSettlement.commissionAmount.toString());
-    const netProfit = profit.minus(commission);
+    const grossCommission = new Decimal(updatedSettlement.commissionAmount.toString());
+    const paidDuringWithdraw = await sumPaidWithdrawCommissionsInPeriod(
+      tx,
+      Number(investorId),
+      updatedSettlement.periodStart,
+      updatedSettlement.periodEnd
+    );
+    const remainingCommission = Decimal.max(ZERO, grossCommission.minus(paidDuringWithdraw));
+    const netProfit = profit.minus(grossCommission);
 
     // Komisyon kesintisini sermayeden düşürmek için movement yaz.
     // periodEnd gününün sonunda uygulanmış sayılması için movement.date = periodEnd + 1 gün.
-    if (commission.greaterThan(ZERO)) {
+    if (remainingCommission.greaterThan(ZERO)) {
       const movementDate = new Date(updatedSettlement.periodEnd);
       movementDate.setDate(movementDate.getDate() + 1);
 
@@ -144,7 +293,7 @@ export async function settleMonth(investorId, year, month) {
             investorId: Number(investorId),
             date: movementDate,
             type: 'withdraw',
-            amount: commission.toString(),
+            amount: remainingCommission.toString(),
             note,
           },
         });
@@ -254,23 +403,34 @@ export async function unsettleMonth(investorId, year, month) {
 export async function getSettlementsForInvestor(investorId, opts = {}) {
   const { includeCurrentDraft = false, settledOnly = false } = opts;
 
-  const where = { investorId: Number(investorId) };
-  if (settledOnly) where.isSettled = true;
+  const invId = Number(investorId);
+  const investor = await prisma.investor.findUnique({
+    where: { id: invId },
+    select: { id: true, isActive: true, billingDay: true },
+  });
+
+  const where = { investorId: invId };
+  if (settledOnly || (investor && !investor.isActive)) {
+    where.isSettled = true;
+  }
 
   const list = await prisma.monthlySettlement.findMany({
     where,
     orderBy: [{ year: 'asc' }, { month: 'asc' }],
   });
+  const normalizedList = await Promise.all(list.map((s) => normalizeSettlementCommissionForDisplay(prisma, s)));
 
-  if (settledOnly || !includeCurrentDraft) return list;
+  if (settledOnly || !includeCurrentDraft) return normalizedList;
 
-  const investor = await prisma.investor.findUnique({ where: { id: Number(investorId) } });
-  const draft = investor ? await getCurrentDraftPreviewForInvestor(investor) : null;
-  if (!draft) return list;
+  if (!investor) return normalizedList;
+  const draft = await getCurrentDraftPreviewForInvestor(investor);
+  if (!draft) return normalizedList;
 
   // Aynı (year, month) zaten varsa draft ekleme (DB kaydı gerçeği temsil eder)
-  const exists = list.some((s) => s.year === draft.year && s.month === draft.month);
-  return exists ? list : [...list, draft].sort((a, b) => (a.year - b.year) || (a.month - b.month));
+  const exists = normalizedList.some((s) => s.year === draft.year && s.month === draft.month);
+  return exists
+    ? normalizedList
+    : [...normalizedList, draft].sort((a, b) => (a.year - b.year) || (a.month - b.month));
 }
 
 /** Önizleme / yetki kontrolü için tek satır */
@@ -300,12 +460,14 @@ export async function getLastSettledPeriodEnd(investorId) {
 export async function getAllSettlements(opts = {}) {
   const { includeCurrentDraft = false } = opts;
 
-  const list = await prisma.monthlySettlement.findMany({
+  const listRaw = await prisma.monthlySettlement.findMany({
     orderBy: [{ year: 'desc' }, { month: 'desc' }],
-    include: { investor: { select: { id: true, name: true } } },
+    include: { investor: { select: { id: true, name: true, isActive: true } } },
   });
+  const list = listRaw.filter((s) => s.isSettled || s.investor?.isActive);
+  const normalizedList = await Promise.all(list.map((s) => normalizeSettlementCommissionForDisplay(prisma, s)));
 
-  if (!includeCurrentDraft) return list;
+  if (!includeCurrentDraft) return normalizedList;
 
   // Draft sadece aktif yatırımcılarda ve mevcut dönem için eklenir (DB'ye yazılmaz).
   const activeInvestors = await prisma.investor.findMany({ where: { isActive: true } });
@@ -314,11 +476,11 @@ export async function getAllSettlements(opts = {}) {
 
   // Mevcut listede aynı (investorId, year, month) varsa draft ekleme
   const key = (s) => `${s.investorId}_${s.year}_${s.month}`;
-  const existingKeys = new Set(list.map(key));
+  const existingKeys = new Set(normalizedList.map(key));
   const newDrafts = drafts.filter((d) => !existingKeys.has(key(d)));
 
   // getAllSettlements normalde desc; drafts'ı da ekleyip aynı sıraya sok
-  const combined = [...list, ...newDrafts];
+  const combined = [...normalizedList, ...newDrafts];
   combined.sort((a, b) => {
     if (b.year !== a.year) return b.year - a.year;
     if (b.month !== a.month) return b.month - a.month;
@@ -337,7 +499,52 @@ export async function getAllSettlements(opts = {}) {
 // ---------------------------------------------------------------------------
 
 export async function calculateSettlementPreview(investorId, year, month) {
-  return calculateSettlement(prisma, investorId, year, month);
+  const id = Number(investorId);
+  const y = Number(year);
+  const m = Number(month);
+  const inv = await prisma.investor.findUnique({ where: { id }, select: { isActive: true } });
+  if (inv && !inv.isActive) {
+    const row = await prisma.monthlySettlement.findUnique({
+      where: { investorId_year_month: { investorId: id, year: y, month: m } },
+      select: { isSettled: true },
+    });
+    if (!row?.isSettled) {
+      throw Object.assign(
+        new Error('Pasif yatırımcı için kesinleşmemiş dönem önizlemesi yapılamaz.'),
+        { status: 422 }
+      );
+    }
+  }
+  const preview = await calculateSettlement(prisma, id, y, m);
+  const paidDuringWithdraw = await sumPaidWithdrawCommissionsInPeriod(
+    prisma,
+    id,
+    preview.periodStart,
+    preview.periodEnd
+  );
+  const consumedProfitPart = await sumConsumedProfitPartInPeriod(
+    prisma,
+    id,
+    preview.periodStart,
+    preview.periodEnd
+  );
+  const grossProfit = new Decimal(preview.monthlyProfit);
+  const remainingProfit = grossProfit.greaterThan(ZERO)
+    ? Decimal.max(ZERO, grossProfit.minus(consumedProfitPart))
+    : grossProfit;
+  const remainingCommission = Decimal.max(
+    ZERO,
+    new Decimal(preview.commissionAmount).minus(paidDuringWithdraw)
+  );
+  return {
+    ...preview,
+    monthlyProfit: remainingProfit.toString(),
+    monthlyProfitGross: preview.monthlyProfit,
+    profitConsumedByWithdraw: consumedProfitPart.toString(),
+    commissionGrossAmount: preview.commissionAmount,
+    commissionPaidDuringWithdraw: paidDuringWithdraw.toString(),
+    commissionAmount: remainingCommission.toString(),
+  };
 }
 
 export async function getCurrentEstimatedCommission(investorId, asOfDate = new Date()) {
@@ -347,12 +554,31 @@ export async function getCurrentEstimatedCommission(investorId, asOfDate = new D
   }
 
   const { year, month } = getCurrentPeriodTarget(asOfDate, inv.billingDay);
+  if (!inv.isActive) {
+    return {
+      year,
+      month,
+      commissionAmount: '0',
+      monthlyProfit: '0',
+      netProfit: '0',
+    };
+  }
   const preview = await calculateSettlement(prisma, inv.id, year, month);
+  const paidDuringWithdraw = await sumPaidWithdrawCommissionsInPeriod(
+    prisma,
+    inv.id,
+    preview.periodStart,
+    preview.periodEnd
+  );
+  const remainingCommission = Decimal.max(
+    ZERO,
+    new Decimal(preview.commissionAmount).minus(paidDuringWithdraw)
+  );
 
   return {
     year,
     month,
-    commissionAmount: preview.commissionAmount,
+    commissionAmount: remainingCommission.toString(),
     monthlyProfit: preview.monthlyProfit,
     netProfit: preview.netProfit,
   };
@@ -565,9 +791,9 @@ function addOneMonth({ year, month }) {
 export async function refreshUnsettledSettlementsForInvestorAtDate(investorId, date) {
   const inv = await prisma.investor.findUnique({
     where: { id: Number(investorId) },
-    select: { id: true, billingDay: true },
+    select: { id: true, billingDay: true, isActive: true },
   });
-  if (!inv) return;
+  if (!inv || !inv.isActive) return;
 
   const d = date instanceof Date ? date : new Date(String(date).slice(0, 10));
   const m0 = monthKey(d);
@@ -613,7 +839,7 @@ export async function regenerateSettlementsForInvestor(investorId) {
   const id = Number(investorId);
   const inv = await prisma.investor.findUnique({
     where: { id },
-    select: { id: true, billingDay: true, startDate: true },
+    select: { id: true, billingDay: true, startDate: true, isActive: true },
   });
   if (!inv) throw Object.assign(new Error('Yatırımcı bulunamadı.'), { status: 404 });
 
@@ -633,6 +859,10 @@ export async function regenerateSettlementsForInvestor(investorId) {
   await prisma.monthlySettlement.deleteMany({ where: { investorId: id, isSettled: false } });
 
   const results = [];
+  if (!inv.isActive) {
+    return results;
+  }
+
   for (let idx = startIdx; idx <= endIdx; idx++) {
     const { year, month } = indexToYm(idx);
     const existing = await prisma.monthlySettlement.findUnique({

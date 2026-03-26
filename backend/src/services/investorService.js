@@ -12,6 +12,7 @@ import {
 } from '../engine/calculationEngine.js';
 import {
   assertNoSettledSettlementsForInvestor,
+  deleteUnsettledSettlementsForInvestor,
   regenerateSettlementsForInvestor,
   recalculateAllSettlementsForInvestor,
 } from './settlementService.js';
@@ -119,6 +120,11 @@ export async function updateInvestor(id, { name, isActive, commissionRate, billi
 
   // Önce DB'yi güncelle
   const updated = await prisma.investor.update({ where: { id: Number(id) }, data });
+
+  const becameInactive = isActive !== undefined && !Boolean(isActive) && existing.isActive;
+  if (becameInactive) {
+    await deleteUnsettledSettlementsForInvestor(Number(id));
+  }
 
   if (startDateChanged) {
     const from = await getEarliestDailyResultDate(prisma);

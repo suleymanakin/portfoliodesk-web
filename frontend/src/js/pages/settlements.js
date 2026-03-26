@@ -77,7 +77,13 @@ async function loadMovements(investorId) {
   const el = document.getElementById('movementsTable');
   if (!el) return;
   try {
-    const rows = await investorApi.movements(investorId);
+    const rowsRaw = await investorApi.movements(investorId);
+    const rows = [...(rowsRaw || [])].sort((a, b) => {
+      const ad = new Date(a.date).getTime();
+      const bd = new Date(b.date).getTime();
+      if (bd !== ad) return bd - ad; // newest first
+      return Number(b.id || 0) - Number(a.id || 0);
+    });
     // Bu sayfa admin operasyonları içindir: hareketler her zaman düzenlenebilir.
     renderMovements(rows, true);
   } catch (err) {
@@ -112,6 +118,9 @@ function renderMovements(rows, canEdit) {
     if (note.startsWith('commission_settlement:')) {
       return `<span class="text-warning"><i class="bi bi-cash-stack"></i> Komisyon Kesimi</span>`;
     }
+    if (note.startsWith('commission_withdraw:')) {
+      return `<span class="text-warning"><i class="bi bi-cash-stack"></i> Çekim Komisyonu</span>`;
+    }
     return escapeHtml(note);
   }
 
@@ -119,6 +128,7 @@ function renderMovements(rows, canEdit) {
     const note = r?.note ? String(r.note) : '';
     if (!note) return '';
     if (note.startsWith('commission_settlement:')) return 'komisyon kesimi';
+    if (note.startsWith('commission_withdraw:')) return 'çekim komisyonu';
     return note;
   }
 

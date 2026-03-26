@@ -80,7 +80,12 @@ function moneyOrDash(v) {
 function kindGroupLabel(e) {
   if (e.kind === 'daily') return 'Günlük';
   if (e.kind === 'movement') {
-    if (e.movement?.type === 'commission') return 'Komisyon';
+    if (e.movement?.type === 'commission') {
+      const note = e.movement?.note ? String(e.movement.note) : '';
+      if (note.startsWith('commission_withdraw:')) return 'Çekim Komisyonu';
+      if (note.startsWith('commission_settlement:')) return 'Dönem Sonu Komisyonu';
+      return 'Komisyon';
+    }
     return 'Hareket';
   }
   if (e.kind === 'settlement') return 'Hesap Kesimi';
@@ -90,21 +95,24 @@ function kindGroupLabel(e) {
 function renderPrimaryValue(e) {
   if (e.kind === 'daily') {
     const n = parseFloat(e.daily?.profit ?? '0');
-    return `<div class="tx-cell-scroll"><span class="${pctClass(n)} fw-700">${displayMoney(n)}</span></div>`;
+    return `<span class="${pctClass(n)} fw-700">${displayMoney(n)}</span>`;
   }
   if (e.kind === 'movement') {
     const amt = parseFloat(e.movement?.amount ?? '0');
+    const note = e.movement?.note ? String(e.movement.note) : '';
     const cls = e.movement?.type === 'deposit' ? 'badge-success'
       : e.movement?.type === 'withdraw' ? 'badge-warning'
       : 'badge-neutral';
     const label = e.movement?.type === 'deposit' ? 'Giriş'
       : e.movement?.type === 'withdraw' ? 'Çıkış'
+      : note.startsWith('commission_withdraw:') ? 'Çekim Komisyonu'
+      : note.startsWith('commission_settlement:') ? 'Dönem Sonu Komisyonu'
       : 'Komisyon';
-    return `<div class="tx-cell-scroll"><span class="badge ${cls}">${label}</span> <span class="fw-700">${displayMoney(amt)}</span></div>`;
+    return `<span class="badge ${cls}">${label}</span> <span class="fw-700">${displayMoney(amt)}</span>`;
   }
   if (e.kind === 'settlement') {
-    const p = parseFloat(e.settlement?.monthlyProfit ?? '0');
-    return `<div class="tx-cell-scroll"><span class="${pctClass(p)} fw-700">${displayMoney(p)}</span></div>`;
+    const net = parseFloat(e.settlement?.netProfit ?? 0);
+    return `<span class="${pctClass(net)} fw-700">${displayMoney(net)}</span>`;
   }
   return '—';
 }
@@ -113,21 +121,25 @@ function renderDetail(e) {
   if (e.kind === 'daily') {
     const before = moneyOrDash(e.daily?.capitalBefore);
     const after = moneyOrDash(e.daily?.capitalAfter);
-    return `<div class="tx-cell-scroll"><span class="text-secondary text-sm">${before} → ${after}</span></div>`;
+    return `<div class="tx-detail-content"><span class="text-secondary text-sm">${before} → ${after}</span></div>`;
   }
   if (e.kind === 'movement') {
     const note = e.movement?.note ? String(e.movement.note) : '';
     if (!note) return '<span class="text-secondary text-sm">—</span>';
     if (note.startsWith('commission_settlement:')) {
-      return '<div class="tx-cell-scroll"><span class="text-warning text-sm"><i class="bi bi-cash-stack"></i> Komisyon Kesimi</span></div>';
+      return '<div class="tx-detail-content"><span class="text-warning text-sm"><i class="bi bi-cash-stack"></i> Komisyon Kesimi</span></div>';
     }
-    return `<div class="tx-cell-scroll"><span class="text-secondary text-sm">${escapeHtml(note)}</span></div>`;
+    if (note.startsWith('commission_withdraw:')) {
+      return '<div class="tx-detail-content"><span class="text-warning text-sm"><i class="bi bi-cash-stack"></i> Çekim Komisyonu</span></div>';
+    }
+    return `<div class="tx-detail-content"><span class="text-secondary text-sm">${escapeHtml(note)}</span></div>`;
   }
   if (e.kind === 'settlement') {
-    const comm = moneyOrDash(e.settlement?.commissionAmount);
-    const net = moneyOrDash(e.settlement?.netProfit);
+    const periodProfit = moneyOrDash(e.settlement?.monthlyProfit);
+    const remainingCommission = moneyOrDash(e.settlement?.commissionAmount);
+    const remainingNetProfit = moneyOrDash(e.settlement?.netProfit);
     const status = e.settlement?.isSettled ? 'Kesinleşti' : 'Taslak';
-    return `<div class="tx-cell-scroll"><span class="text-secondary text-sm">Komisyon: ${comm} · Net: ${net} · ${escapeHtml(status)}</span></div>`;
+    return `<div class="tx-detail-content"><span class="text-secondary text-sm">Dönem Kârı: ${periodProfit} · Kalan Komisyon: ${remainingCommission} · Kalan Net Kâr: ${remainingNetProfit} · ${escapeHtml(status)}</span></div>`;
   }
   return '<span class="text-secondary text-sm">—</span>';
 }
@@ -198,7 +210,12 @@ function downloadCSV(rows) {
     })();
     const detail = (() => {
       if (r.kind === 'daily') return `Öncesi: ${r.daily?.capitalBefore ?? ''} Sonrası: ${r.daily?.capitalAfter ?? ''}`;
-      if (r.kind === 'movement') return r.movement?.note ?? '';
+      if (r.kind === 'movement') {
+        const note = r.movement?.note ?? '';
+        if (typeof note === 'string' && note.startsWith('commission_settlement:')) return 'Dönem Sonu Komisyonu';
+        if (typeof note === 'string' && note.startsWith('commission_withdraw:')) return 'Çekim Komisyonu';
+        return note;
+      }
       if (r.kind === 'settlement') return `Komisyon: ${r.settlement?.commissionAmount ?? ''} Net: ${r.settlement?.netProfit ?? ''} Durum: ${r.settlement?.isSettled ? 'Kesinleşti' : 'Taslak'}`;
       return '';
     })().replaceAll(',', ' ');

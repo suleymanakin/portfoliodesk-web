@@ -510,20 +510,27 @@ async function onInvestorChange(id) {
 
   _selectedInvestorId = Number(id);
   const investor = _investors.find((i) => i.id === _selectedInvestorId);
+  const sameInvestor = _dashCache?.investor?.id === _selectedInvestorId;
 
   emptyMsg.style.display = 'none';
   content.classList.remove('inv-content-hidden');
 
-  // Reset to skeletons
-  document.getElementById('invStatsGrid').innerHTML = buildStatSkeleton(5);
-  document.getElementById('invQuickInfo').innerHTML = `<div class="skeleton inv-skeleton inv-skeleton--body"></div>`;
-  document.getElementById('invPerfBody').innerHTML = `<div class="skeleton inv-skeleton" style="height:120px"></div>`;
-  document.getElementById('invSettlementTable').querySelector('tbody').innerHTML =
-    '<tr><td colspan="6" class="text-center inv-table-loading">Veriler yükleniyor...</td></tr>';
-  document.getElementById('invSettlementCount').textContent = '';
+  // Yalnızca yatırımcı değişince iskelet; sadece dönem değişince önceki içerik kalsın (genel↔ay flaşı olmasın)
+  if (!sameInvestor) {
+    document.getElementById('invStatsGrid').innerHTML = buildStatSkeleton(5);
+    document.getElementById('invQuickInfo').innerHTML = `<div class="skeleton inv-skeleton inv-skeleton--body"></div>`;
+    document.getElementById('invPerfBody').innerHTML = `<div class="skeleton inv-skeleton" style="height:120px"></div>`;
+    document.getElementById('invSettlementTable').querySelector('tbody').innerHTML =
+      '<tr><td colspan="6" class="text-center inv-table-loading">Veriler yükleniyor...</td></tr>';
+    document.getElementById('invSettlementCount').textContent = '';
+  }
 
-  // Update banner with known info immediately
-  updateBanner(investor, null);
+  // Yükleme sırasında güncel (investor.currentCapital) banner’a basılmasın: önbellek + seçili dönem anahtarı
+  if (sameInvestor && _dashCache.monthly?.length) {
+    updateBanner(investor, _dashCache.summary ?? null, _dashCache.monthly);
+  } else {
+    updateBanner(investor, null);
+  }
 
   try {
     const [summary, series, monthly, movements] = await Promise.all([
@@ -552,6 +559,19 @@ async function onInvestorChange(id) {
     document.getElementById('invStatsGrid').innerHTML =
       `<div class="text-danger mb-1" style="padding:1rem;">Veriler yüklenirken hata oluştu.</div>`;
   }
+}
+
+/** Dropdown / state ile API option değerlerini hizala (örn. 2025-3 → 2025-03) */
+function normalizePeriodKey(key) {
+  if (key == null || key === '') return 'general';
+  const s = String(key).trim();
+  if (s === 'general') return 'general';
+  const parts = s.split('-');
+  if (parts.length !== 2) return s;
+  const y = Number(parts[0]);
+  const mo = Number(parts[1]);
+  if (!Number.isFinite(y) || !Number.isFinite(mo)) return s;
+  return `${y}-${String(mo).padStart(2, '0')}`;
 }
 
 function setupPeriodSelect(monthly) {
@@ -586,21 +606,26 @@ function setupPeriodSelect(monthly) {
   sel.disabled = false;
   sel.innerHTML = opts.map((o) => `<option value="${escapeHtml(o.value)}">${escapeHtml(o.label)}</option>`).join('');
 
+  _selectedPeriodKey = normalizePeriodKey(_selectedPeriodKey);
   if (!opts.some((o) => o.value === _selectedPeriodKey)) {
     _selectedPeriodKey = _investorOnlyMode ? opts[0].value : 'general';
   }
   sel.value = _selectedPeriodKey;
 
   sel.onchange = () => {
-    _selectedPeriodKey = sel.value;
+    _selectedPeriodKey = normalizePeriodKey(sel.value);
     if (_selectedInvestorId) onInvestorChange(String(_selectedInvestorId));
   };
 }
 
 function getSelectedPeriod(monthly) {
-  if (!_selectedPeriodKey || _selectedPeriodKey === 'general') return null;
-  const [y, m] = String(_selectedPeriodKey).split('-').map((x) => Number(x));
-  return (monthly || []).find((r) => r.year === y && r.month === m) || null;
+  const key = normalizePeriodKey(_selectedPeriodKey);
+  if (!key || key === 'general') return null;
+  const [y, m] = key.split('-').map((x) => Number(x));
+  if (!Number.isFinite(y) || !Number.isFinite(m)) return null;
+  return (
+    (monthly || []).find((r) => Number(r.year) === y && Number(r.month) === m) || null
+  );
 }
 
 /** Hesap kesimi satırındaki (yıl, ay) için bir önceki ay etiketi — örn. 2026/03 → 2026/02 */
@@ -684,7 +709,8 @@ function updateDashboardCapHints(lastEndIso) {
 }
 
 function isCommissionSettlementNote(note) {
-  return typeof note === 'string' && note.startsWith('commission_settlement:');
+  return typeof note === 'string'
+    && (note.startsWith('commission_settlement:') || note.startsWith('commission_withdraw:'));
 }
 
 /** Dönem [periodStart, periodEnd] içindeki ana para çıkışları (withdraw, komisyon kesimi hariç); pozitif toplam */
@@ -726,6 +752,8 @@ function updateBanner(investor, summary, monthly = null) {
   const anaBanner = resolvedAnaparaBannerAmount(investor.id, summary, investor);
   const period = monthly ? getSelectedPeriod(monthly) : null;
   const periodMode = !!period;
+  const periodKeyNorm = normalizePeriodKey(_selectedPeriodKey);
+  const wantsPeriod = periodKeyNorm !== 'general';
 
   let current;
   let profit;
@@ -738,17 +766,26 @@ function updateBanner(investor, summary, monthly = null) {
     profit = parseFloat(period.monthlyProfit ?? 0);
     const cs = parseFloat(period.capitalStart ?? 0);
     pct = cs > 0 && Number.isFinite(profit) ? (profit / cs) * 100 : null;
-  } else {
+  } else if (wantsPeriod) {
+    // Ay seçili ama satır yok: genel özet (güncel sermaye) gösterme — kısa flaşı engeller
+    current = null;
+    profit = null;
+    pct = null;
+  } else if (summary) {
     current = parseFloat(summary?.capital?.currentCapital ?? investor.currentCapital ?? 0);
     profit =
       summary?.performance?.totalProfit != null ? parseFloat(summary.performance.totalProfit) : null;
     pct = summary?.performance?.growthPct != null ? parseFloat(summary.performance.growthPct) : null;
+  } else {
+    current = null;
+    profit = null;
+    pct = null;
   }
 
   document.getElementById('invBannerAvatar').textContent = initials(investor.name);
   document.getElementById('invNameDisplay').textContent = investor.name;
   document.getElementById('invBannerMeta').textContent =
-    `Ana Para: ${displayMoney(anaBanner.value)}${anaBanner.isOverride ? ' (gösterim)' : ''} · Komisyon: %${parseFloat(investor.commissionRate || 0)}`;
+    `Ana Para: ${displayMoney(anaBanner.value)}`;
 
   const bannerCapital = document.getElementById('invBannerCapital');
   const profitFinite = profit !== null && Number.isFinite(profit);
@@ -766,11 +803,16 @@ function updateBanner(investor, summary, monthly = null) {
 
   const periodHint = periodMode
     ? '<div class="inv-banner-stat-micro">Seçili ay · komisyon düşülmüş dönem sonu</div>'
-    : '';
+    : wantsPeriod && !period
+      ? '<div class="inv-banner-stat-micro text-muted">Seçili dönem verisi hazırlanıyor…</div>'
+      : '';
+
+  const currentStr =
+    current !== null && Number.isFinite(current) ? displayMoney(current) : '—';
 
   bannerCapital.innerHTML = `
     <div class="inv-banner-stat-label">Güncel Sermaye</div>
-    <div class="inv-banner-stat-val">${displayMoney(current)}</div>
+    <div class="inv-banner-stat-val">${currentStr}</div>
     ${periodHint}
     <div class="inv-banner-stat-delta ${isPos ? 'inv-delta-pos' : 'inv-delta-neg'}">
       ${deltaHtml}
@@ -883,7 +925,7 @@ function renderStats(investor, series, monthly, summary) {
         label: 'Önceki Dönem Portföy Değeri',
         value: displayMoney(cs),
         delta: null,
-        sub: `Dönem sonu (net, komisyon düşülmemiş) · ${prevPeriodLabel}`,
+        sub: `Dönem sonu (net, komisyon düşülmüş) · ${prevPeriodLabel}`,
       },
       {
         icon: '<i class="bi bi-graph-up-arrow"></i>',
@@ -952,7 +994,7 @@ function renderStats(investor, series, monthly, summary) {
       label: 'Güncel Sermaye',
       value: displayMoney(current),
       delta: null,
-      sub: `Ana Para: ${displayMoney(anaBanner.value)}${anaBanner.isOverride ? ' (gösterim)' : ''}`,
+      sub: `Ana Para: ${displayMoney(anaBanner.value)}`,
     },
     { icon: '<i class="bi bi-graph-up"></i>', accent: (totalProfit ?? 0) >= 0 ? 'success' : 'danger', theme: (totalProfit ?? 0) >= 0 ? 'success' : 'danger', label: 'Toplam Net Kâr', value: totalProfit === null ? '—' : displayMoney(totalProfit), delta: growthPct === null ? null : displayPct(growthPct, true), deltaClass: growthPct === null ? '' : pctClass(growthPct), sub: `${monthCount} dönem` },
     { icon: '<i class="bi bi-trophy"></i>', accent: 'warning', theme: 'warning', label: 'En İyi Ay', value: bestMonth ? displayMoney(parseFloat(bestMonth.monthlyProfit)) : '—', delta: bestMonth ? `${bestMonth.year}/${String(bestMonth.month).padStart(2, '0')}` : null, deltaClass: 'pct-positive', sub: bestMonth ? formatMonth(bestMonth.year, bestMonth.month) : 'Veri yok' },
@@ -1000,13 +1042,13 @@ function renderSummaryCard(investor, series, monthly, summary, movements = []) {
       { label: 'Kâr/Zarar', value: displayMoney(p), icon: '<i class="bi bi-bar-chart"></i>', clsVal: pctClass(p) },
     ];
     rows.push({
-      label: 'Para Çıkışı (Ana Para)',
+      label: 'Para Çıkışı',
       value: withdrawSum > 0 ? displayMoney(-withdrawSum) : displayMoney(0),
       icon: '<i class="bi bi-box-arrow-up"></i>',
       clsVal: withdrawSum > 0 ? 'val-negative' : 'pct-zero',
     });
     rows.push({
-      label: 'Para Girişi (Ana Para)',
+      label: 'Para Girişi',
       value: depositSum > 0 ? displayMoney(depositSum, { showPlus: true }) : displayMoney(0),
       icon: '<i class="bi bi-box-arrow-in-down"></i>',
       clsVal: depositSum > 0 ? 'val-positive' : 'pct-zero',
@@ -1177,6 +1219,7 @@ function renderTable(monthly) {
     .map((m, idx) => {
       const profit = parseFloat(m.monthlyProfit ?? 0);
       const commission = parseFloat(m.commissionAmount || 0);
+      const periodEndNet = (parseFloat(m.capitalEnd ?? 0) || 0) - commission;
       const rowClass = profit > 0 ? 'inv-tr-positive' : profit < 0 ? 'inv-tr-negative' : '';
 
       return `
@@ -1188,7 +1231,7 @@ function renderTable(monthly) {
           </div>
         </td>
         <td class="text-right">${displayMoney(m.capitalStart)}</td>
-        <td class="text-right fw-600">${displayMoney(m.capitalEnd)}</td>
+        <td class="text-right fw-600">${displayMoney(periodEndNet)}</td>
         <td class="text-right ${pctClass(profit)} fw-700">${displayMoney(profit)}</td>
         <td class="text-right text-warning fw-600">${displayMoney(commission)}</td>
         <td class="text-center">
