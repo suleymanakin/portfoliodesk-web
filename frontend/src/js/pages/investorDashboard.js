@@ -639,6 +639,17 @@ function formatPreviousSettlementPeriodLabel(year, month) {
   return `${y} / ${String(mo).padStart(2, '0')}`;
 }
 
+/** Bir önceki faturalama ayının settlement satırı (Dönem Özeti "Dönem Sonu Sermaye (Net)" ile aynı kaynak) */
+function getPreviousSettlementRow(monthly, year, month) {
+  let y = Number(year);
+  let mo = Number(month) - 1;
+  if (mo < 1) {
+    mo = 12;
+    y -= 1;
+  }
+  return (monthly || []).find((r) => Number(r.year) === y && Number(r.month) === mo) || null;
+}
+
 function toDateOnlyStr(d) {
   if (d == null) return '';
   if (typeof d === 'string') return d.slice(0, 10);
@@ -881,11 +892,15 @@ function renderStats(investor, series, monthly, summary) {
 
   const period = getSelectedPeriod(monthly);
   if (period) {
-    const cs = parseFloat(period.capitalStart ?? 0);
     const ce = parseFloat(period.capitalEnd ?? 0);
     const c = parseFloat(period.commissionAmount ?? 0);
     const p = parseFloat(period.monthlyProfit ?? 0);
     const periodEndNetKpi = ce - c;
+
+    const prevRow = getPreviousSettlementRow(monthly, period.year, period.month);
+    const prevPeriodEndNetKpi = prevRow
+      ? parseFloat(prevRow.capitalEnd ?? 0) - parseFloat(prevRow.commissionAmount ?? 0)
+      : null;
 
     const anaCard = resolvedAnaparaCardAmount(investor.id, summary, investor);
     const anaValueStr = anaCard.value === null ? '—' : displayMoney(anaCard.value);
@@ -923,9 +938,14 @@ function renderStats(investor, series, monthly, summary) {
         accent: 'info',
         theme: 'info',
         label: 'Önceki Dönem Portföy Değeri',
-        value: displayMoney(cs),
+        value:
+          prevPeriodEndNetKpi !== null && Number.isFinite(prevPeriodEndNetKpi)
+            ? displayMoney(prevPeriodEndNetKpi)
+            : '—',
         delta: null,
-        sub: `Dönem sonu (net, komisyon düşülmüş) · ${prevPeriodLabel}`,
+        sub: prevRow
+          ? `Dönem sonu (net, komisyon düşülmüş) · ${prevPeriodLabel}`
+          : `Önceki dönem kaydı yok · ${prevPeriodLabel}`,
       },
       {
         icon: '<i class="bi bi-graph-up-arrow"></i>',
