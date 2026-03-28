@@ -201,6 +201,14 @@
 .btn .bi { font-size: 1em; }
 .btn .bi:first-child { margin-right: 0.35rem; }
 .btn .bi:last-child:not(:first-child) { margin-left: 0.35rem; }
+/* Yalnızca ikon: metin+ikon için eklenen margin ortalamayı bozar */
+.btn > .bi:only-child {
+  margin: 0 !important;
+}
+.btn:has(> .bi:only-child),
+.btn:has(> svg:only-child) {
+  justify-content: center;
+}
 
 /* =========================================================
    FORMS

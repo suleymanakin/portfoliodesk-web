@@ -77,6 +77,24 @@
         <span class="nav-icon"><i class="bi bi-gear"></i></span><span class="nav-label">Admin Panel</span>
       </a>
     </nav>
+
+    <!-- Mobilde: tema, kullanıcı, çıkış (topbar yerine) -->
+    <div class="sidebar-footer sidebar-footer--mobile" id="sidebarFooterAccount" hidden>
+      <div class="sidebar-footer-account">
+        <div class="sidebar-footer-user-text">
+          <span class="sidebar-footer-user-name" id="sidebarFooterUserName"></span>
+          <span class="sidebar-footer-user-role" id="sidebarFooterUserRole"></span>
+        </div>
+        <div class="sidebar-footer-actions">
+          <button type="button" class="btn btn-ghost theme-toggle" id="themeToggleSidebar" aria-label="Tema" title="Tema">
+            <i class="bi bi-sun theme-toggle-icon" aria-hidden="true"></i>
+          </button>
+          <button type="button" class="btn btn-ghost sidebar-footer-logout" id="logoutBtnSidebar" aria-label="Çıkış" title="Çıkış">
+            <i class="bi bi-box-arrow-right sidebar-footer-logout-icon" aria-hidden="true"></i>
+          </button>
+        </div>
+      </div>
+    </div>
   </aside>
 
   <!-- ===================== MAIN ===================== -->
@@ -87,7 +105,7 @@
         <span></span><span></span><span></span>
       </button>
       <div class="topbar-brand">
-        <img class="topbar-logo" src="assets/images/logo.png" alt="" width="32" height="32"/>
+        <img class="topbar-logo" src="assets/images/logo.png" alt=""/>
         <div class="topbar-title">Portfolio Web</div>
       </div>
       <div class="topbar-actions">

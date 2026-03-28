@@ -883,10 +883,6 @@ function renderStats(investor, series, monthly, summary) {
     const prevPeriodEndNetKpi = prevRow
       ? parseFloat(prevRow.capitalEnd ?? 0) - parseFloat(prevRow.commissionAmount ?? 0)
       : null;
-    const netPortfolioDelta =
-      prevPeriodEndNetKpi !== null && Number.isFinite(prevPeriodEndNetKpi)
-        ? periodEndNetKpi - prevPeriodEndNetKpi
-        : null;
 
     const anaCard = resolvedAnaparaCardAmount(investor.id, summary, investor);
     const anaValueStr = anaCard.value === null ? '—' : displayMoney(anaCard.value);
@@ -941,30 +937,6 @@ function renderStats(investor, series, monthly, summary) {
         value: displayMoney(periodEndNetKpi),
         delta: null,
         sub: `Dönem sonu (net, komisyon düşülmüş) · ${periodLabel}`,
-      },
-      {
-        icon: '<i class="bi bi-arrow-left-right"></i>',
-        accent:
-          netPortfolioDelta === null || !Number.isFinite(netPortfolioDelta)
-            ? 'info'
-            : netPortfolioDelta >= 0
-              ? 'success'
-              : 'danger',
-        theme:
-          netPortfolioDelta === null || !Number.isFinite(netPortfolioDelta)
-            ? 'info'
-            : netPortfolioDelta >= 0
-              ? 'success'
-              : 'danger',
-        label: 'Net Portföy Değişimi',
-        value:
-          netPortfolioDelta !== null && Number.isFinite(netPortfolioDelta)
-            ? displayMoney(netPortfolioDelta)
-            : '—',
-        delta: null,
-        sub: prevRow
-          ? 'Önceki net sona göre (üst bant ile aynı); para giriş/çıkışı dahil'
-          : 'Önceki dönem yok',
       },
       {
         icon: '<i class="bi bi-graph-up"></i>',

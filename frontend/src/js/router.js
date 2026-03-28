@@ -218,6 +218,7 @@ async function initRouter() {
   initSidebarToggle();
   initSidebarCollapse();
   document.getElementById('logoutBtn')?.addEventListener('click', logout);
+  document.getElementById('logoutBtnSidebar')?.addEventListener('click', logout);
   window.addEventListener('hashchange', onHashChange);
 
   const token = localStorage.getItem('pd_token');
@@ -254,10 +255,16 @@ function updateAdminNavVisibility() {
   const topbarUser = document.getElementById('topbarUser');
   const topbarUserName = document.getElementById('topbarUserName');
   const topbarUserRole = document.getElementById('topbarUserRole');
+  const sidebarFooterAccount = document.getElementById('sidebarFooterAccount');
+  const sidebarFooterUserName = document.getElementById('sidebarFooterUserName');
+  const sidebarFooterUserRole = document.getElementById('sidebarFooterUserRole');
   if (adminLink) adminLink.style.display = user?.role === 'admin' ? '' : 'none';
   if (topbarUser) topbarUser.style.display = user ? '' : 'none';
   if (topbarUserName) topbarUserName.textContent = user?.investor?.name ?? user?.username ?? '';
   if (topbarUserRole) topbarUserRole.textContent = user?.role === 'admin' ? 'Admin' : 'Yatırımcı';
+  if (sidebarFooterAccount) sidebarFooterAccount.hidden = !user;
+  if (sidebarFooterUserName) sidebarFooterUserName.textContent = user?.investor?.name ?? user?.username ?? '';
+  if (sidebarFooterUserRole) sidebarFooterUserRole.textContent = user?.role === 'admin' ? 'Admin' : 'Yatırımcı';
 
   // Yatırımcı rolünde sadece Yatırımcı Paneli menüde görünsün
   const navIds = ['dashboard', 'daily-entry', 'investor-dashboard', 'transactions', 'reports', 'settlements'];
