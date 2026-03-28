@@ -774,10 +774,23 @@ function updateBanner(investor, summary, monthly = null) {
     const ce = parseFloat(period.capitalEnd ?? 0);
     const comm = parseFloat(period.commissionAmount ?? 0);
     current = ce - comm;
-    profit = parseFloat(period.monthlyProfit ?? 0);
-    const cs = parseFloat(period.capitalStart ?? 0);
-    const netProfitForPct = profit - comm;
-    pct = cs > 0 && Number.isFinite(netProfitForPct) ? (netProfitForPct / cs) * 100 : null;
+    const prevRow = getPreviousSettlementRow(monthly, period.year, period.month);
+    const prevNet =
+      prevRow != null
+        ? parseFloat(prevRow.capitalEnd ?? 0) - parseFloat(prevRow.commissionAmount ?? 0)
+        : null;
+
+    if (prevRow != null && prevNet != null && Number.isFinite(prevNet) && prevNet > 0) {
+      // Önceki dönem net sonu (KPI ile aynı) → güncel net: doğrulama için öncekiNet × (1 + %) ≈ güncel net
+      profit = current - prevNet;
+      pct = Number.isFinite(profit) ? (profit / prevNet) * 100 : null;
+    } else {
+      const grossProfit = parseFloat(period.monthlyProfit ?? 0);
+      profit = grossProfit;
+      const cs = parseFloat(period.capitalStart ?? 0);
+      const netProfitForPct = grossProfit - comm;
+      pct = cs > 0 && Number.isFinite(netProfitForPct) ? (netProfitForPct / cs) * 100 : null;
+    }
   } else if (wantsPeriod) {
     // Ay seçili ama satır yok: genel özet (güncel sermaye) gösterme — kısa flaşı engeller
     current = null;
@@ -833,7 +846,7 @@ function updateBanner(investor, summary, monthly = null) {
   }
 
   const periodHint = periodMode
-    ? '<div class="inv-banner-stat-micro">Seçili ay · komisyon düşülmüş dönem sonu</div>'
+    ? '<div class="inv-banner-stat-micro">Seçili ay · önceki dönem net sonuna göre portföy net değişimi (para çıkışı/girişi dahil)</div>'
     : wantsPeriod && !period
       ? '<div class="inv-banner-stat-micro text-muted">Seçili dönem verisi hazırlanıyor…</div>'
       : '';
