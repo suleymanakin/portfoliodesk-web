@@ -387,10 +387,27 @@ ul, ol { list-style: none; }
   border-radius: 5px;
 }
 
+.topbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.topbar-logo {
+  height: 32px;
+  width: auto;
+  max-height: calc(var(--topbar-height) - 12px);
+  object-fit: contain;
+  display: block;
+  flex-shrink: 0;
+}
+
 .topbar-title {
   font-size: 1rem;
   font-weight: 600;
-  flex: 1;
+  min-width: 0;
 }
 
 .topbar-actions {
