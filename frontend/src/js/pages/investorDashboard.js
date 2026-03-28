@@ -776,7 +776,8 @@ function updateBanner(investor, summary, monthly = null) {
     current = ce - comm;
     profit = parseFloat(period.monthlyProfit ?? 0);
     const cs = parseFloat(period.capitalStart ?? 0);
-    pct = cs > 0 && Number.isFinite(profit) ? (profit / cs) * 100 : null;
+    const netProfitForPct = profit - comm;
+    pct = cs > 0 && Number.isFinite(netProfitForPct) ? (netProfitForPct / cs) * 100 : null;
   } else if (wantsPeriod) {
     // Ay seçili ama satır yok: genel özet (güncel sermaye) gösterme — kısa flaşı engeller
     current = null;
@@ -786,7 +787,26 @@ function updateBanner(investor, summary, monthly = null) {
     current = parseFloat(summary?.capital?.currentCapital ?? investor.currentCapital ?? 0);
     profit =
       summary?.performance?.totalProfit != null ? parseFloat(summary.performance.totalProfit) : null;
-    pct = summary?.performance?.growthPct != null ? parseFloat(summary.performance.growthPct) : null;
+    const netInvested = parseFloat(summary?.capital?.netInvested ?? 0);
+    const life =
+      summary?.commissions?.lifetimeSettledCommission != null
+        ? parseFloat(summary.commissions.lifetimeSettledCommission)
+        : 0;
+    const est =
+      summary?.commissions?.estimatedCurrentCommission != null
+        ? parseFloat(summary.commissions.estimatedCurrentCommission)
+        : 0;
+    const totalCommForPct = (Number.isFinite(life) ? life : 0) + (Number.isFinite(est) ? est : 0);
+    if (
+      profit !== null &&
+      Number.isFinite(profit) &&
+      netInvested > 0 &&
+      Number.isFinite(totalCommForPct)
+    ) {
+      pct = ((profit - totalCommForPct) / netInvested) * 100;
+    } else {
+      pct = summary?.performance?.growthPct != null ? parseFloat(summary.performance.growthPct) : null;
+    }
   } else {
     current = null;
     profit = null;
