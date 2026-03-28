@@ -671,6 +671,11 @@ function lastSettledPeriodEndIso(monthly) {
   return max || null;
 }
 
+/** En az bir kesinleşmiş hesap kesimi var mı (banner / güncel sermaye için) */
+function hasSettledMonth(monthly) {
+  return Array.isArray(monthly) && monthly.some((m) => m && m.isSettled);
+}
+
 /** Seriyi son kesinleşme sonuna kadar (dahil) kırpar; endIso yoksa boş dizi */
 function filterSeriesUpToDateInclusive(series, endIso) {
   if (!endIso || !series?.length) return [];
@@ -766,64 +771,21 @@ function updateBanner(investor, summary, monthly = null) {
   const periodKeyNorm = normalizePeriodKey(_selectedPeriodKey);
   const wantsPeriod = periodKeyNorm !== 'general';
 
-  let current;
-  let profit;
-  let pct;
+  const noSettledEver = !hasSettledMonth(monthly);
 
-  if (period) {
+  let current;
+  if (noSettledEver) {
+    current = null;
+  } else if (period) {
     const ce = parseFloat(period.capitalEnd ?? 0);
     const comm = parseFloat(period.commissionAmount ?? 0);
     current = ce - comm;
-    const prevRow = getPreviousSettlementRow(monthly, period.year, period.month);
-    const prevNet =
-      prevRow != null
-        ? parseFloat(prevRow.capitalEnd ?? 0) - parseFloat(prevRow.commissionAmount ?? 0)
-        : null;
-
-    if (prevRow != null && prevNet != null && Number.isFinite(prevNet) && prevNet > 0) {
-      // Önceki dönem net sonu (KPI ile aynı) → güncel net: doğrulama için öncekiNet × (1 + %) ≈ güncel net
-      profit = current - prevNet;
-      pct = Number.isFinite(profit) ? (profit / prevNet) * 100 : null;
-    } else {
-      const grossProfit = parseFloat(period.monthlyProfit ?? 0);
-      profit = grossProfit;
-      const cs = parseFloat(period.capitalStart ?? 0);
-      const netProfitForPct = grossProfit - comm;
-      pct = cs > 0 && Number.isFinite(netProfitForPct) ? (netProfitForPct / cs) * 100 : null;
-    }
   } else if (wantsPeriod) {
-    // Ay seçili ama satır yok: genel özet (güncel sermaye) gösterme — kısa flaşı engeller
     current = null;
-    profit = null;
-    pct = null;
   } else if (summary) {
     current = parseFloat(summary?.capital?.currentCapital ?? investor.currentCapital ?? 0);
-    profit =
-      summary?.performance?.totalProfit != null ? parseFloat(summary.performance.totalProfit) : null;
-    const netInvested = parseFloat(summary?.capital?.netInvested ?? 0);
-    const life =
-      summary?.commissions?.lifetimeSettledCommission != null
-        ? parseFloat(summary.commissions.lifetimeSettledCommission)
-        : 0;
-    const est =
-      summary?.commissions?.estimatedCurrentCommission != null
-        ? parseFloat(summary.commissions.estimatedCurrentCommission)
-        : 0;
-    const totalCommForPct = (Number.isFinite(life) ? life : 0) + (Number.isFinite(est) ? est : 0);
-    if (
-      profit !== null &&
-      Number.isFinite(profit) &&
-      netInvested > 0 &&
-      Number.isFinite(totalCommForPct)
-    ) {
-      pct = ((profit - totalCommForPct) / netInvested) * 100;
-    } else {
-      pct = summary?.performance?.growthPct != null ? parseFloat(summary.performance.growthPct) : null;
-    }
   } else {
     current = null;
-    profit = null;
-    pct = null;
   }
 
   document.getElementById('invBannerAvatar').textContent = initials(investor.name);
@@ -832,24 +794,14 @@ function updateBanner(investor, summary, monthly = null) {
     `Ana Para: ${displayMoney(anaBanner.value)}`;
 
   const bannerCapital = document.getElementById('invBannerCapital');
-  const profitFinite = profit !== null && Number.isFinite(profit);
-  const isPos = profitFinite ? profit >= 0 : true;
 
-  let deltaHtml = '—';
-  if (profitFinite) {
-    const arrow = isPos ? '<i class="bi bi-arrow-up"></i>' : '<i class="bi bi-arrow-down"></i>';
-    if (pct !== null && Number.isFinite(pct)) {
-      deltaHtml = `${arrow} ${displayMoney(Math.abs(profit))} (${displayPct(pct, true)})`;
-    } else {
-      deltaHtml = `${arrow} ${displayMoney(Math.abs(profit))}`;
-    }
-  }
-
-  const periodHint = periodMode
-    ? '<div class="inv-banner-stat-micro">Seçili ay · önceki dönem net sonuna göre portföy net değişimi (para çıkışı/girişi dahil)</div>'
-    : wantsPeriod && !period
-      ? '<div class="inv-banner-stat-micro text-muted">Seçili dönem verisi hazırlanıyor…</div>'
-      : '';
+  const periodHint = noSettledEver
+    ? '<div class="inv-banner-stat-micro text-muted">Henüz kesinleşmiş hesap kesimi yok</div>'
+    : periodMode
+      ? '<div class="inv-banner-stat-micro">Seçili ay · komisyon düşülmüş dönem sonu</div>'
+      : wantsPeriod && !period
+        ? '<div class="inv-banner-stat-micro text-muted">Seçili dönem verisi hazırlanıyor…</div>'
+        : '';
 
   const currentStr =
     current !== null && Number.isFinite(current) ? displayMoney(current) : '—';
@@ -858,9 +810,6 @@ function updateBanner(investor, summary, monthly = null) {
     <div class="inv-banner-stat-label">Güncel Sermaye</div>
     <div class="inv-banner-stat-val">${currentStr}</div>
     ${periodHint}
-    <div class="inv-banner-stat-delta ${isPos ? 'inv-delta-pos' : 'inv-delta-neg'}">
-      ${deltaHtml}
-    </div>
   `;
 
   // Banner gradient based on active/inactive
@@ -934,6 +883,10 @@ function renderStats(investor, series, monthly, summary) {
     const prevPeriodEndNetKpi = prevRow
       ? parseFloat(prevRow.capitalEnd ?? 0) - parseFloat(prevRow.commissionAmount ?? 0)
       : null;
+    const netPortfolioDelta =
+      prevPeriodEndNetKpi !== null && Number.isFinite(prevPeriodEndNetKpi)
+        ? periodEndNetKpi - prevPeriodEndNetKpi
+        : null;
 
     const anaCard = resolvedAnaparaCardAmount(investor.id, summary, investor);
     const anaValueStr = anaCard.value === null ? '—' : displayMoney(anaCard.value);
@@ -990,13 +943,37 @@ function renderStats(investor, series, monthly, summary) {
         sub: `Dönem sonu (net, komisyon düşülmüş) · ${periodLabel}`,
       },
       {
+        icon: '<i class="bi bi-arrow-left-right"></i>',
+        accent:
+          netPortfolioDelta === null || !Number.isFinite(netPortfolioDelta)
+            ? 'info'
+            : netPortfolioDelta >= 0
+              ? 'success'
+              : 'danger',
+        theme:
+          netPortfolioDelta === null || !Number.isFinite(netPortfolioDelta)
+            ? 'info'
+            : netPortfolioDelta >= 0
+              ? 'success'
+              : 'danger',
+        label: 'Net Portföy Değişimi',
+        value:
+          netPortfolioDelta !== null && Number.isFinite(netPortfolioDelta)
+            ? displayMoney(netPortfolioDelta)
+            : '—',
+        delta: null,
+        sub: prevRow
+          ? 'Önceki net sona göre (üst bant ile aynı); para giriş/çıkışı dahil'
+          : 'Önceki dönem yok',
+      },
+      {
         icon: '<i class="bi bi-graph-up"></i>',
         accent: p >= 0 ? 'success' : 'danger',
         theme: p >= 0 ? 'success' : 'danger',
-        label: 'Dönem Kar',
+        label: 'Dönem İşlem Kârı',
         value: displayMoney(p),
         delta: null,
-        sub: 'Komisyon hariç',
+        sub: 'Komisyon hariç · Sadece piyasa hareketi',
       },
     ];
 
@@ -1092,7 +1069,7 @@ function renderSummaryCard(investor, series, monthly, summary, movements = []) {
         icon: '<i class="bi bi-bank"></i>',
       },
       { label: 'Dönem Başı Sermaye', value: displayMoney(cs), icon: '<i class="bi bi-bank"></i>' },
-      { label: 'Kâr/Zarar', value: displayMoney(p), icon: '<i class="bi bi-bar-chart"></i>', clsVal: pctClass(p) },
+      { label: 'Kâr/Zarar (piyasa)', value: displayMoney(p), icon: '<i class="bi bi-bar-chart"></i>', clsVal: pctClass(p) },
     ];
     rows.push({
       label: 'Para Çıkışı',
